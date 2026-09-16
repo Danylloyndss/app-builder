@@ -32,9 +32,6 @@ class Manager:
             self.memory.save(self.memory_path)
             start_index = 0
 
-        self.memory.status = "running"
-        self.memory.save(self.memory_path)
-
         for index, task in enumerate(self.memory.plan[start_index:], start=start_index):
             decision = self.policy.decide(task)
             if not decision.allowed:
@@ -50,6 +47,7 @@ class Manager:
                 self.memory.save(self.memory_path)
                 return self.memory
 
+            self.memory.status = "running"
             self.memory.current_task = task
             self.memory.record("task_started", index=index, task=task)
             self.memory.save(self.memory_path)
