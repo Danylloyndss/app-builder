@@ -15,7 +15,7 @@ class ActionPolicy:
     """Classify actions before the agent executes them."""
 
     APPROVAL_RULES = {
-        "human_auth": ("login", "sign in", "password", "external account"),
+        "human_auth": ("login", "sign in", "password", "external account", "user access flow"),
         "secrets": ("secret", "api key", "token"),
         "financial": ("payment", "pay", "purchase"),
         "external_communication": ("send email", "send message"),
