@@ -27,7 +27,7 @@ class ArchitectureTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             Manager(temp_dir).run("Create a simple expense tracker")
-            artifact_dir = Path(temp_dir) / "project" / ".app-builder"
+            artifact_dir = Path(temp_dir) / ".app-builder"
             for filename in ("spec.json", "architecture.json", "tasks.json"):
                 self.assertTrue((artifact_dir / filename).exists())
             tasks = json.loads((artifact_dir / "tasks.json").read_text(encoding="utf-8"))
