@@ -1,32 +1,26 @@
-"""Mission planner for App Builder V1.
-
-The planner turns a natural-language mission into concrete, deterministic
-build stages. It deliberately stays dependency-free so it can run in the
-same sandbox as the rest of V1.
-"""
+"""Mission planner for App Builder V1."""
 
 
 class Planner:
+    """Convert a natural-language mission into deterministic build stages."""
+
+    FEATURE_RULES = {
+        "Implement user access flow": ("login", "sign in", "account", "senha", "connexion", "connect"),
+        "Implement data storage layer": ("database", "data", "dados", "save", "store", "enregistrer", "persist"),
+        "Implement input forms": ("form", "field", "formulário", "cadastro", "register", "timesheet", "folha de horas"),
+        "Implement dashboard": ("dashboard", "admin", "manager", "gestor", "painel"),
+        "Optimize mobile experience": ("mobile", "phone", "celular", "smartphone", "responsive"),
+        "Implement calculator": ("calculator", "calculate", "total", "calcular", "hours", "horas"),
+        "Implement history and lists": ("list", "history", "lista", "histórico", "records", "registros"),
+    }
+
     def create_plan(self, mission: str) -> list[str]:
         mission = mission.strip()
-        plan = [
-            "Understand the mission",
-            "Create the project structure",
-        ]
-
-        # Add focused implementation stages from common app requirements.
         lower = mission.lower()
-        if any(word in lower for word in ("login", "account", "user", "senha")):
-            plan.append("Implement user access flow")
-        if any(word in lower for word in ("database", "data", "dados", "save", "store")):
-            plan.append("Implement data storage layer")
-        if any(word in lower for word in ("form", "field", "formulário", "cadastro")):
-            plan.append("Implement input forms")
-        if any(word in lower for word in ("dashboard", "admin", "manager", "gestor")):
-            plan.append("Implement dashboard")
-        if any(word in lower for word in ("mobile", "phone", "celular", "responsive")):
-            plan.append("Optimize mobile experience")
-
+        plan = ["Understand the mission", "Create the project structure"]
+        for task, keywords in self.FEATURE_RULES.items():
+            if any(keyword in lower for keyword in keywords):
+                plan.append(task)
         plan.extend([
             "Implement the requested functionality",
             "Run tests",
