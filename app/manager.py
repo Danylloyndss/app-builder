@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+from .approvals import ApprovalStore
 from .executor import Executor
 from .memory import ProjectMemory
 from .planner import Planner
+from .policy import ActionPolicy
 from .tester import Tester
 
 
@@ -16,6 +18,8 @@ class Manager:
         self.planner = Planner()
         self.executor = Executor()
         self.tester = Tester()
+        self.policy = ActionPolicy()
+        self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.max_retries = max_retries
 
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
@@ -32,6 +36,20 @@ class Manager:
         self.memory.save(self.memory_path)
 
         for index, task in enumerate(self.memory.plan[start_index:], start=start_index):
+            decision = self.policy.decide(task)
+            if not decision.allowed:
+                if decision.requires_approval:
+                    request = self.approvals.create(task, decision.reason)
+                    self.memory.status = "waiting_for_approval"
+                    self.memory.current_task = task
+                    self.memory.record("approval_requested", request_id=request.id, task=task)
+                else:
+                    self.memory.status = "blocked"
+                    self.memory.errors.append(decision.reason)
+                    self.memory.record("action_blocked", task=task, reason=decision.reason)
+                self.memory.save(self.memory_path)
+                return self.memory
+
             self.memory.current_task = task
             self.memory.record("task_started", index=index, task=task)
             self.memory.save(self.memory_path)
