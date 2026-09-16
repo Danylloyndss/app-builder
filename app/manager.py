@@ -7,6 +7,7 @@ from .executor import Executor
 from .memory import ProjectMemory
 from .planner import Planner
 from .policy import ActionPolicy
+from .specification import SpecificationBuilder
 from .tester import Tester
 
 
@@ -16,6 +17,7 @@ class Manager:
         self.memory_path = self.workspace / "state.json"
         self.memory = ProjectMemory.load(self.memory_path)
         self.planner = Planner()
+        self.specification = SpecificationBuilder()
         self.executor = Executor()
         self.tester = Tester()
         self.policy = ActionPolicy()
@@ -33,6 +35,9 @@ class Manager:
                 start_index = len(self.memory.completed)
         else:
             self.memory = ProjectMemory(mission=mission, status="planning")
+            spec = self.specification.build(mission)
+            spec.save(self.workspace / "project" / ".app-builder" / "spec.json")
+            self.memory.record("specification_created", features=spec.features, screens=spec.screens)
             self.memory.plan = self.planner.create_plan(mission)
             self.memory.record("plan_created", tasks=self.memory.plan)
             self.memory.save(self.memory_path)
@@ -65,6 +70,7 @@ class Manager:
                 self.memory.completed.append(result)
                 if approved:
                     self.approvals.consume(approved["id"])
+                    self.memory.record("approval_consumed", request_id=approved["id"], task=task)
                 self.memory.record("task_completed", index=index, task=task, result=result)
                 self.memory.save(self.memory_path)
                 continue
