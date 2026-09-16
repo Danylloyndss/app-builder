@@ -22,12 +22,6 @@ class Manager:
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.max_retries = max_retries
 
-    def _approved_request_for(self, task: str) -> dict | None:
-        for item in self.approvals._load():
-            if item.get("action") == task and item.get("status") == "approved":
-                return item
-        return None
-
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
         if resume and self.memory.mission == mission and self.memory.plan:
             if self.memory.status == "waiting_for_approval" and self.memory.current_task:
@@ -46,7 +40,7 @@ class Manager:
 
         for index, task in enumerate(self.memory.plan[start_index:], start=start_index):
             decision = self.policy.decide(task)
-            approved = self._approved_request_for(task)
+            approved = self.approvals.approved_for(task)
             if not decision.allowed and not approved:
                 if decision.requires_approval:
                     existing = next((x for x in self.approvals.list_pending() if x["action"] == task), None)
@@ -69,6 +63,8 @@ class Manager:
             if task != "Run tests":
                 result = self.executor.execute(task, self.workspace, self.memory.mission)
                 self.memory.completed.append(result)
+                if approved:
+                    self.approvals.consume(approved["id"])
                 self.memory.record("task_completed", index=index, task=task, result=result)
                 self.memory.save(self.memory_path)
                 continue
