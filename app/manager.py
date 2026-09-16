@@ -55,7 +55,7 @@ class Manager:
             self.memory.save(self.memory_path)
 
             if task != "Run tests":
-                result = self.executor.execute(task, self.workspace)
+                result = self.executor.execute(task, self.workspace, self.memory.mission)
                 self.memory.completed.append(result)
                 self.memory.record("task_completed", index=index, task=task, result=result)
                 self.memory.save(self.memory_path)
@@ -67,7 +67,7 @@ class Manager:
                 attempts += 1
                 self.memory.errors.append(f"Attempt {attempts}: {message}")
                 self.memory.record("repair", attempt=attempts, error=message)
-                self.executor.execute("Repair after test failure", self.workspace)
+                self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
                 ok, message = self.tester.test(self.workspace)
 
             if ok:
