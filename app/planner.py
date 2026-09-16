@@ -10,8 +10,8 @@ class Planner:
         "Implement input forms": ("form", "field", "formulário", "cadastro", "register", "timesheet", "folha de horas"),
         "Implement dashboard": ("dashboard", "admin", "manager", "gestor", "painel"),
         "Optimize mobile experience": ("mobile", "phone", "celular", "smartphone", "responsive"),
-        "Implement calculator": ("calculator", "calculate", "total", "calcular", "hours", "horas"),
-        "Implement history and lists": ("list", "history", "lista", "histórico", "records", "registros"),
+        "Implement calculator": ("calculator", "calculate", "total", "calcular", "hours", "horas", "timesheet", "folha de horas"),
+        "Implement history and lists": ("list", "history", "lista", "histórico", "records", "registros", "timesheet", "folha de horas"),
     }
 
     def create_plan(self, mission: str) -> list[str]:
