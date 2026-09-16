@@ -10,14 +10,23 @@ class Tester:
         self.executor = Executor()
 
     def test(self, workspace: Path) -> tuple[bool, str]:
-        marker = workspace / "hello_app.txt"
-        if not (marker.exists() and marker.read_text(encoding="utf-8").strip()):
-            return False, "Expected output file was not created"
+        required = ("index.html", "app.js", "README.md")
+        missing = [name for name in required if not (workspace / name).exists()]
+        if missing:
+            return False, f"Generated project is missing: {', '.join(missing)}"
 
-        code, output = self.executor.run_command(
-            ["python", "-m", "unittest", "discover", "-s", "tests", "-v"],
-            workspace.parent,
-        )
-        if code != 0:
-            return False, f"Automated tests failed: {output[-2000:]}"
-        return True, "Hello App and automated test suite passed"
+        index = (workspace / "index.html").read_text(encoding="utf-8")
+        script = (workspace / "app.js").read_text(encoding="utf-8")
+        if "<html" not in index.lower() or not script.strip():
+            return False, "Generated web app files are invalid or empty"
+
+        tests_dir = workspace / "tests"
+        if tests_dir.exists():
+            code, output = self.executor.run_command(
+                ["python", "-m", "unittest", "discover", "-s", "tests", "-v"],
+                workspace,
+            )
+            if code != 0:
+                return False, f"Project tests failed: {output[-2000:]}"
+
+        return True, "Generated project passed structural tests"
