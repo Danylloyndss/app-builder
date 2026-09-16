@@ -8,6 +8,7 @@ from .executor import Executor
 from .memory import ProjectMemory
 from .planner import Planner
 from .policy import ActionPolicy
+from .quality import QualityGate
 from .specification import SpecificationBuilder
 from .tasks import TaskBuilder
 from .tester import Tester
@@ -22,6 +23,7 @@ class Manager:
         self.specification = SpecificationBuilder()
         self.architecture = ArchitectureBuilder()
         self.tasks = TaskBuilder()
+        self.quality = QualityGate()
         self.executor = Executor()
         self.tester = Tester()
         self.policy = ActionPolicy()
@@ -48,6 +50,22 @@ class Manager:
             task_ids=[task.id for task in tasks],
             dependencies={task.id: task.dependencies for task in tasks},
         )
+
+    def _run_quality_gate(self) -> bool:
+        spec = self.specification.build(self.memory.mission)
+        report = self.quality.evaluate(self.workspace, spec.acceptance_criteria)
+        report.save(self.workspace / ".app-builder" / "quality_report.json")
+        self.memory.record(
+            "quality_gate",
+            passed=report.passed,
+            structural_checks=report.structural_checks,
+            security_checks=report.security_checks,
+            acceptance_checks=report.acceptance_checks,
+            errors=report.errors,
+        )
+        if not report.passed:
+            self.memory.errors.extend(report.errors)
+        return report.passed
 
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
         if resume and self.memory.mission == mission and self.memory.plan:
@@ -119,6 +137,9 @@ class Manager:
                 self.memory.record("tests_failed", message=message)
             self.memory.save(self.memory_path)
 
+        self.memory.status = "quality_review"
+        self.memory.save(self.memory_path)
+        self._run_quality_gate()
         self.memory.current_task = ""
         self.memory.status = "completed" if not self.memory.errors else "completed_with_errors"
         self.memory.record("mission_finished", status=self.memory.status)
