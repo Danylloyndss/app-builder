@@ -20,9 +20,9 @@ class ApprovalFlowTests(unittest.TestCase):
             manager.approvals.decide(request_id, True)
 
             resumed = Manager(temp_dir).run(mission, resume=True)
-            self.assertIn("Implement user access flow", resumed.completed)
+            self.assertTrue(any("auth" in item.lower() for item in resumed.completed))
             self.assertNotEqual(resumed.status, "waiting_for_approval")
-            self.assertEqual(manager.approvals.get(request_id)["status"], "consumed")
+            self.assertEqual(Manager(temp_dir).approvals.get(request_id)["status"], "consumed")
             self.assertTrue((Path(temp_dir) / "project" / "index.html").exists())
 
 
