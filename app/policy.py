@@ -8,24 +8,33 @@ class PolicyDecision:
     allowed: bool
     requires_approval: bool
     reason: str = ""
+    category: str = "safe"
 
 
 class ActionPolicy:
     """Classify actions before the agent executes them."""
 
-    APPROVAL_KEYWORDS = (
-        "login", "sign in", "password", "secret", "api key", "token",
-        "payment", "pay", "purchase", "publish", "deploy to production",
-        "delete production", "send email", "send message", "external account",
-    )
+    APPROVAL_RULES = {
+        "human_auth": ("login", "sign in", "password", "external account"),
+        "secrets": ("secret", "api key", "token"),
+        "financial": ("payment", "pay", "purchase"),
+        "external_communication": ("send email", "send message"),
+        "release": ("publish", "deploy to production"),
+    }
     BLOCKED_KEYWORDS = (
         "rm -rf /", "format disk", "wipe disk", "delete all files",
     )
 
     def decide(self, action: str) -> PolicyDecision:
-        normalized = action.lower()
+        normalized = action.lower().strip()
         if any(keyword in normalized for keyword in self.BLOCKED_KEYWORDS):
-            return PolicyDecision(False, False, "Potentially destructive action is blocked")
-        if any(keyword in normalized for keyword in self.APPROVAL_KEYWORDS):
-            return PolicyDecision(False, True, "Human approval is required for this action")
-        return PolicyDecision(True, False)
+            return PolicyDecision(False, False, "Potentially destructive action is blocked", "blocked")
+        for category, keywords in self.APPROVAL_RULES.items():
+            if any(keyword in normalized for keyword in keywords):
+                return PolicyDecision(
+                    False,
+                    True,
+                    f"Human approval is required for {category.replace('_', ' ')} action",
+                    category,
+                )
+        return PolicyDecision(True, False, category="safe")
