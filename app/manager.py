@@ -22,9 +22,21 @@ class Manager:
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.max_retries = max_retries
 
+    def _approved_request_for(self, task: str) -> dict | None:
+        for item in self.approvals._load():
+            if item.get("action") == task and item.get("status") == "approved":
+                return item
+        return None
+
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
         if resume and self.memory.mission == mission and self.memory.plan:
-            start_index = len(self.memory.completed)
+            if self.memory.status == "waiting_for_approval" and self.memory.current_task:
+                try:
+                    start_index = self.memory.plan.index(self.memory.current_task)
+                except ValueError:
+                    start_index = len(self.memory.completed)
+            else:
+                start_index = len(self.memory.completed)
         else:
             self.memory = ProjectMemory(mission=mission, status="planning")
             self.memory.plan = self.planner.create_plan(mission)
@@ -34,12 +46,14 @@ class Manager:
 
         for index, task in enumerate(self.memory.plan[start_index:], start=start_index):
             decision = self.policy.decide(task)
-            if not decision.allowed:
+            approved = self._approved_request_for(task)
+            if not decision.allowed and not approved:
                 if decision.requires_approval:
-                    request = self.approvals.create(task, decision.reason)
+                    existing = next((x for x in self.approvals.list_pending() if x["action"] == task), None)
+                    request = existing or self.approvals.create(task, decision.reason)
                     self.memory.status = "waiting_for_approval"
                     self.memory.current_task = task
-                    self.memory.record("approval_requested", request_id=request.id, task=task)
+                    self.memory.record("approval_requested", request_id=request["id"] if isinstance(request, dict) else request.id, task=task)
                 else:
                     self.memory.status = "blocked"
                     self.memory.errors.append(decision.reason)
