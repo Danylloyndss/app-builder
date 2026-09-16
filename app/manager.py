@@ -3,11 +3,13 @@
 from pathlib import Path
 
 from .approvals import ApprovalStore
+from .architecture import ArchitectureBuilder
 from .executor import Executor
 from .memory import ProjectMemory
 from .planner import Planner
 from .policy import ActionPolicy
 from .specification import SpecificationBuilder
+from .tasks import TaskBuilder
 from .tester import Tester
 
 
@@ -18,11 +20,38 @@ class Manager:
         self.memory = ProjectMemory.load(self.memory_path)
         self.planner = Planner()
         self.specification = SpecificationBuilder()
+        self.architecture = ArchitectureBuilder()
+        self.tasks = TaskBuilder()
         self.executor = Executor()
         self.tester = Tester()
         self.policy = ActionPolicy()
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.max_retries = max_retries
+
+    def _prepare_project(self, mission: str) -> None:
+        artifact_dir = self.workspace / "project" / ".app-builder"
+        spec = self.specification.build(mission)
+        spec.save(artifact_dir / "spec.json")
+        architecture = self.architecture.build(spec)
+        architecture.save(artifact_dir / "architecture.json")
+        tasks = self.tasks.build(spec, architecture)
+        self.tasks.save(tasks, artifact_dir / "tasks.json")
+        self.memory.record(
+            "specification_created",
+            features=spec.features,
+            screens=spec.screens,
+        )
+        self.memory.record(
+            "architecture_created",
+            components=architecture.components,
+            frontend=architecture.frontend,
+            storage=architecture.storage,
+        )
+        self.memory.record(
+            "task_graph_created",
+            task_ids=[task.id for task in tasks],
+            dependencies={task.id: task.dependencies for task in tasks},
+        )
 
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
         if resume and self.memory.mission == mission and self.memory.plan:
@@ -35,9 +64,7 @@ class Manager:
                 start_index = len(self.memory.completed)
         else:
             self.memory = ProjectMemory(mission=mission, status="planning")
-            spec = self.specification.build(mission)
-            spec.save(self.workspace / "project" / ".app-builder" / "spec.json")
-            self.memory.record("specification_created", features=spec.features, screens=spec.screens)
+            self._prepare_project(mission)
             self.memory.plan = self.planner.create_plan(mission)
             self.memory.record("plan_created", tasks=self.memory.plan)
             self.memory.save(self.memory_path)
@@ -52,7 +79,11 @@ class Manager:
                     request = existing or self.approvals.create(task, decision.reason)
                     self.memory.status = "waiting_for_approval"
                     self.memory.current_task = task
-                    self.memory.record("approval_requested", request_id=request["id"] if isinstance(request, dict) else request.id, task=task)
+                    self.memory.record(
+                        "approval_requested",
+                        request_id=request["id"] if isinstance(request, dict) else request.id,
+                        task=task,
+                    )
                 else:
                     self.memory.status = "blocked"
                     self.memory.errors.append(decision.reason)
