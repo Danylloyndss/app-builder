@@ -23,7 +23,7 @@ class ApprovalFlowTests(unittest.TestCase):
             self.assertTrue(any("auth" in item.lower() for item in resumed.completed))
             self.assertNotEqual(resumed.status, "waiting_for_approval")
             self.assertEqual(Manager(temp_dir).approvals.get(request_id)["status"], "consumed")
-            self.assertTrue((Path(temp_dir) / "project" / "index.html").exists())
+            self.assertTrue((Path(temp_dir) / "index.html").exists())
 
 
 if __name__ == "__main__":
