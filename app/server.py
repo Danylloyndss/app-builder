@@ -1,7 +1,9 @@
 """HTTP control plane for App Builder V1."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hmac
 import json
+import os
 from pathlib import Path
 
 from .approvals import ApprovalStore
@@ -19,8 +21,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _authorized(self) -> bool:
+        configured = os.environ.get("APP_BUILDER_API_KEY", "").strip()
+        if not configured:
+            return True
+        supplied = self.headers.get("X-App-Builder-Key", "")
+        return bool(supplied) and hmac.compare_digest(supplied, configured)
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -48,12 +58,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if not self._authorized():
+                self._send(401, {"error": "authentication required"})
+                return
             length = int(self.headers.get("Content-Length", "0"))
+            if length > 1_000_000:
+                self._send(413, {"error": "request too large"})
+                return
             data = json.loads(self.rfile.read(length) or b"{}")
             if self.path in ("/run", "/resume"):
                 mission = str(data.get("mission", "")).strip()
-                if not mission:
-                    self._send(400, {"error": "mission is required"})
+                if not mission or len(mission) > 20_000:
+                    self._send(400, {"error": "mission is required and must be <= 20000 characters"})
                     return
                 memory = Manager(workspace=WORKSPACE).run(mission, resume=self.path == "/resume")
                 self._send(200, {"mission": memory.mission, "status": memory.status,
@@ -77,6 +93,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"approval": result})
                 return
             self._send(404, {"error": "not found"})
+        except json.JSONDecodeError:
+            self._send(400, {"error": "invalid JSON"})
         except Exception as exc:
             self._send(500, {"error": str(exc)})
 
@@ -85,7 +103,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def serve() -> None:
-    import os
     port = int(os.environ.get("PORT", "8080"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"App Builder V1 listening on {port}")
