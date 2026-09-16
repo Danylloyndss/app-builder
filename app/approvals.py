@@ -37,6 +37,12 @@ class ApprovalStore:
     def list_pending(self) -> list[dict]:
         return [item for item in self._load() if item["status"] == "pending"]
 
+    def get(self, request_id: str) -> dict | None:
+        for item in self._load():
+            if item["id"] == request_id:
+                return item
+        return None
+
     def decide(self, request_id: str, approved: bool) -> dict | None:
         items = self._load()
         for item in items:
