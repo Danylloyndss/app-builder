@@ -38,8 +38,17 @@ class ApprovalStore:
         return [item for item in self._load() if item["status"] == "pending"]
 
     def get(self, request_id: str) -> dict | None:
-        for item in self._load():
-            if item["id"] == request_id:
+        return next((item for item in self._load() if item["id"] == request_id), None)
+
+    def approved_for(self, action: str) -> dict | None:
+        return next((item for item in self._load() if item["action"] == action and item["status"] == "approved"), None)
+
+    def consume(self, request_id: str) -> dict | None:
+        items = self._load()
+        for item in items:
+            if item["id"] == request_id and item["status"] == "approved":
+                item["status"] = "consumed"
+                self._save(items)
                 return item
         return None
 
