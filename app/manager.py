@@ -29,18 +29,14 @@ class Manager:
         self.max_retries = max_retries
 
     def _prepare_project(self, mission: str) -> None:
-        artifact_dir = self.workspace / "project" / ".app-builder"
+        artifact_dir = self.workspace / ".app-builder"
         spec = self.specification.build(mission)
         spec.save(artifact_dir / "spec.json")
         architecture = self.architecture.build(spec)
         architecture.save(artifact_dir / "architecture.json")
         tasks = self.tasks.build(spec, architecture)
         self.tasks.save(tasks, artifact_dir / "tasks.json")
-        self.memory.record(
-            "specification_created",
-            features=spec.features,
-            screens=spec.screens,
-        )
+        self.memory.record("specification_created", features=spec.features, screens=spec.screens)
         self.memory.record(
             "architecture_created",
             components=architecture.components,
