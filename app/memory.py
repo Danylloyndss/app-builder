@@ -11,6 +11,9 @@ class ProjectMemory:
     plan: list[str] = field(default_factory=list)
     completed: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    status: str = "idle"
+    current_task: str = ""
+    history: list[dict] = field(default_factory=list)
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -20,4 +23,12 @@ class ProjectMemory:
     def load(cls, path: Path) -> "ProjectMemory":
         if not path.exists():
             return cls()
-        return cls(**json.loads(path.read_text(encoding="utf-8")))
+        data = json.loads(path.read_text(encoding="utf-8"))
+        # Keep backward compatibility with V1 memory files.
+        data.setdefault("status", "idle")
+        data.setdefault("current_task", "")
+        data.setdefault("history", [])
+        return cls(**data)
+
+    def record(self, event: str, **details) -> None:
+        self.history.append({"event": event, **details})
