@@ -1,11 +1,12 @@
-"""HTTP control plane for the App Builder V1."""
+"""HTTP control plane for App Builder V1."""
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 import json
+from pathlib import Path
 
 from .manager import Manager
 
+WORKSPACE = "workspace"
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "static" / "index.html"
 
@@ -31,10 +32,22 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path == "/status":
+            memory = Manager(workspace=WORKSPACE).memory
+            self._send(200, {
+                "mission": memory.mission,
+                "status": memory.status,
+                "current_task": memory.current_task,
+                "plan": memory.plan,
+                "completed": memory.completed,
+                "errors": memory.errors,
+                "history": memory.history[-20:],
+            })
+            return
         self._send(404, {"error": "not found"})
 
     def do_POST(self) -> None:
-        if self.path != "/run":
+        if self.path not in ("/run", "/resume"):
             self._send(404, {"error": "not found"})
             return
         try:
@@ -44,9 +57,11 @@ class Handler(BaseHTTPRequestHandler):
             if not mission:
                 self._send(400, {"error": "mission is required"})
                 return
-            memory = Manager().run(mission)
+            memory = Manager(workspace=WORKSPACE).run(mission, resume=self.path == "/resume")
             self._send(200, {
                 "mission": memory.mission,
+                "status": memory.status,
+                "current_task": memory.current_task,
                 "plan": memory.plan,
                 "completed": memory.completed,
                 "errors": memory.errors,
