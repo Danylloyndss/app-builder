@@ -18,6 +18,8 @@ class PlannerTests(unittest.TestCase):
         self.assertIn("Implement input forms", plan)
         self.assertIn("Implement dashboard", plan)
         self.assertIn("Optimize mobile experience", plan)
+        self.assertIn("Implement calculator", plan)
+        self.assertIn("Implement history and lists", plan)
 
 
 if __name__ == "__main__":
