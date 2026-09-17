@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlparse
 from .approvals import ApprovalStore
 from .manager import Manager
 from .timepro_api import TimeProService, TimeProValidationError
-WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
+WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; TIMEPRO_SW=ROOT/"static"/"timepro-sw.js"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
 class Handler(BaseHTTPRequestHandler):
     def _send(self,status,payload):
         body=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
@@ -14,6 +14,8 @@ class Handler(BaseHTTPRequestHandler):
         body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
     def _send_manifest(self):
         body=TIMEPRO_MANIFEST.read_bytes(); self.send_response(200); self.send_header("Content-Type","application/manifest+json"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
+    def _send_sw(self):
+        body=TIMEPRO_SW.read_bytes(); self.send_response(200); self.send_header("Content-Type","application/javascript; charset=utf-8"); self.send_header("Service-Worker-Allowed","/"); self.send_header("Cache-Control","no-cache"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _filters(self):
         q=parse_qs(urlparse(self.path).query); return q.get("employee",[None])[0],q.get("company",[None])[0],q.get("date_from",[None])[0],q.get("date_to",[None])[0]
     def _send_csv(self):
@@ -51,6 +53,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/","/index.html"): self._send_html(INDEX); return
         if self.path in ("/timepro","/timepro/"): self._send_html(TIMEPRO_INDEX); return
         if self.path=="/timepro-manifest.json": self._send_manifest(); return
+        if self.path=="/timepro-sw.js": self._send_sw(); return
         if self.path=="/status": self._send(200,self._status_payload(Manager(workspace=WORKSPACE).memory)); return
         if self.path=="/approvals": self._send(200,{"approvals":APPROVALS.list_pending()}); return
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
