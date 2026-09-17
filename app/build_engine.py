@@ -34,7 +34,7 @@ class BuildEngine:
             return self.implement_feature("calculator", mission)
         if "implement history and lists" in normalized:
             return self.implement_feature("list", mission)
-        if "implement the requested functionality" in normalized:
+        if "implement requested functionality" in normalized:
             return self.implement(mission)
         if "repair after test failure" in normalized:
             return self.repair(mission)
@@ -110,10 +110,7 @@ class BuildEngine:
         return features
 
     def _save_features(self, features: list[str]) -> None:
-        self.project.write_file(
-            ".app-builder/features.json",
-            json.dumps(features, indent=2, ensure_ascii=False) + "\n",
-        )
+        self.project.write_file(".app-builder/features.json", json.dumps(features, indent=2, ensure_ascii=False) + "\n")
 
     def _load_features(self) -> list[str]:
         path = self.project.root / ".app-builder/features.json"
@@ -173,15 +170,7 @@ class BuildEngine:
     @staticmethod
     def _readme(mission: str, features: list[str] | None = None) -> str:
         features = features or []
-        lines = [
-            "# Generated App",
-            "",
-            f"Mission: {mission or 'Generated project'}",
-            "",
-            "Features detected: " + (", ".join(features) if features else "none yet"),
-            "",
-            "Built by App Builder V1.",
-        ]
+        lines = ["# Generated App", "", f"Mission: {mission or 'Generated project'}", "", "Features detected: " + (", ".join(features) if features else "none yet"), "", "Built by App Builder V1."]
         return "\n".join(lines) + "\n"
 
     @staticmethod
