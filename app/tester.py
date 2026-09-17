@@ -9,6 +9,33 @@ class Tester:
     def __init__(self) -> None:
         self.executor = Executor()
 
+    @staticmethod
+    def _is_timepro(workspace: Path) -> bool:
+        mission = workspace / ".app-builder" / "mission.txt"
+        if not mission.exists():
+            return False
+        text = mission.read_text(encoding="utf-8").lower()
+        return any(token in text for token in ("timepro", "timesheet", "folha de horas"))
+
+    def _test_timepro(self, workspace: Path) -> tuple[bool, str]:
+        index = (workspace / "index.html").read_text(encoding="utf-8")
+        script = (workspace / "app.js").read_text(encoding="utf-8")
+        required_html = (
+            'id="timesheet-form"', 'name="employee"', 'name="company"',
+            'name="date"', 'name="site"', 'id="start"', 'id="end"',
+            'id="pause"', 'id="total"', 'id="history"', 'id="dashboard"',
+        )
+        missing_html = [marker for marker in required_html if marker not in index]
+        if missing_html:
+            return False, f"TimePro HTML missing required elements: {', '.join(missing_html)}"
+        required_js = (
+            "localStorage", "b < a", "Feuille envoyée avec succès", "function duration",
+        )
+        missing_js = [marker for marker in required_js if marker not in script]
+        if missing_js:
+            return False, f"TimePro logic missing required behavior: {', '.join(missing_js)}"
+        return True, "TimePro functional MVP passed structural and behavior checks"
+
     def test(self, workspace: Path) -> tuple[bool, str]:
         required = ("index.html", "app.js", "README.md")
         missing = [name for name in required if not (workspace / name).exists()]
@@ -20,6 +47,11 @@ class Tester:
         if "<html" not in index.lower() or not script.strip():
             return False, "Generated web app files are invalid or empty"
 
+        if self._is_timepro(workspace):
+            ok, message = self._test_timepro(workspace)
+            if not ok:
+                return False, message
+
         tests_dir = workspace / "tests"
         if tests_dir.exists():
             code, output = self.executor.run_command(
@@ -29,4 +61,4 @@ class Tester:
             if code != 0:
                 return False, f"Project tests failed: {output[-2000:]}"
 
-        return True, "Generated project passed structural tests"
+        return True, "Generated project passed structural and functional tests"
