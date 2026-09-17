@@ -1,38 +1,71 @@
-# App Builder
+# App Builder V1
 
-AI agent that builds applications autonomously.
+Autonomous application-building agent: mission → specification → architecture → task graph → implementation → tests → repair → security → acceptance → delivery.
 
-## Vision
+## Current target: TimePro
 
-Turn a natural-language app idea into a working application by planning, coding, testing, fixing errors, and preparing deployment. The agent pauses only when human action is required, such as account creation, login, permission approval, payment, or important legal confirmation.
+TimePro is the first end-to-end application used to validate the builder: a mobile-friendly digital timesheet with employee entry, automatic hour calculation, history and a manager dashboard.
 
-## First target
+## Implemented V1 capabilities
 
-The first application this agent will build is **TimePro**, a digital timesheet application.
+- Natural-language build mission through the web control plane.
+- Deterministic product specification and architecture generation.
+- Dependency-aware task graph and persistent task state.
+- Project file generation and editing.
+- Automated tests with bounded repair/retest loops.
+- Conditional repair: successful tests do not trigger an unnecessary rebuild.
+- Real security gate for obvious hard-coded secret markers.
+- Mission-specific TimePro acceptance gate with seven checks.
+- Durable mission memory, approvals and quality reports.
+- Human-in-the-loop approval and resume flow.
+- Protected POST control-plane operations via optional `APP_BUILDER_API_KEY`.
+- Build concurrency protection so two missions cannot mutate the same workspace simultaneously.
+- Artifact inventory at `GET /artifacts` and downloadable build bundle at `GET /artifacts.zip`.
+- Railway healthcheck, restart policy, automated tests and pre-deploy tests.
 
-## V1 goals
+## TimePro definition of done
 
-- Receive an app-building mission
-- Break the mission into tasks
-- Track task state and progress
-- Create and edit project files
-- Run commands and tests
-- Detect and analyze errors
-- Attempt fixes and retest
-- Ask for human intervention when required
-- Resume from the saved state after intervention
-- Prepare the application for deployment
+1. Employee can enter a workday timesheet.
+2. Total hours are calculated automatically from start, end and pause.
+3. Invalid time ranges are rejected.
+4. Submitted timesheets appear in history.
+5. Manager dashboard summarizes submitted timesheets.
+6. Core flow is responsive on a mobile viewport.
+7. Optional fields never block submission.
+
+The repository contains automated tests for the TimePro specification, generated MVP, quality gate and complete Manager end-to-end flow.
+
+## Control plane
+
+- `GET /health` — health check.
+- `GET /status` — mission and task state.
+- `GET /approvals` — pending human approvals.
+- `GET /artifacts` — generated workspace files.
+- `GET /artifacts.zip` — downloadable generated workspace bundle.
+- `POST /run` — start a mission.
+- `POST /resume` — resume a paused mission.
+- `POST /approval` — create an approval request.
+- `POST /approval/decision` — record a human decision.
 
 ## Architecture
 
-- Manager / Brain agent
-- Developer agent
-- Designer agent
-- Backend / Database agent
-- Tester agent
-- Security agent
-- Release / Publisher agent
+- **Manager** — orchestration/state machine.
+- **Specification Builder** — product specification.
+- **Architecture Builder** — technical architecture.
+- **Task Builder** — executable dependency graph.
+- **Executor / Build Engine** — implementation.
+- **Tester** — automated verification.
+- **Quality Gate** — security and acceptance verification.
+- **Approval Store / Policy** — human-in-the-loop safety.
+- **Railway** — deployment runtime.
 
-## Status
+## Next expansion layers
 
-Initial repository created. V1 architecture and implementation are next.
+- Real backend/database adapters.
+- Authentication provider adapters with approval gates.
+- External integrations and secret-management adapters.
+- Browser/runtime integration tests.
+- Multi-agent specialist execution behind the same durable state machine.
+- Production release automation after human approval.
+
+The design goal remains: continue autonomously until a genuine external action requires the human, then resume from durable state.
