@@ -11,8 +11,7 @@ class TimeProBuildTests(unittest.TestCase):
     def test_timepro_generates_functional_mvp(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            engine = BuildEngine(root)
-            result = engine.implement("Construa o TimePro")
+            result = BuildEngine(root).implement("Construa o TimePro")
 
             self.assertIn("functional MVP", result)
             html = (root / "index.html").read_text(encoding="utf-8")
@@ -25,7 +24,6 @@ class TimeProBuildTests(unittest.TestCase):
             self.assertIn('id="total"', html)
             self.assertIn('id="timesheet-form"', html)
             self.assertIn("localStorage", js)
-            self.assertIn("Invalid time", readme) if False else None
             self.assertIn("TimePro", readme)
             for feature in ("forms", "storage", "calculator", "list", "dashboard", "mobile"):
                 self.assertIn(feature, features)
