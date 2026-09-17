@@ -1,5 +1,4 @@
 """HTTP control plane for App Builder V1 and TimePro."""
-
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
 import io
@@ -8,6 +7,7 @@ import os
 from pathlib import Path
 import threading
 import zipfile
+from urllib.parse import parse_qs, urlparse
 
 from .approvals import ApprovalStore
 from .manager import Manager
@@ -62,6 +62,19 @@ class Handler(BaseHTTPRequestHandler):
             for relative in self._artifact_files(): archive.write(root / relative, arcname=relative)
         return buffer.getvalue()
 
+    def _timepro_id(self) -> int | None:
+        try:
+            value = parse_qs(urlparse(self.path).query).get("id", [None])[0]
+            return int(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    def _read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > 1_000_000:
+            raise ValueError("request too large")
+        return json.loads(self.rfile.read(length) or b"{}")
+
     def do_GET(self) -> None:
         if self.path == "/health": self._send(200, {"status": "ok", "service": "app-builder-agent"}); return
         if self.path in ("/", "/index.html"):
@@ -73,16 +86,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/artifacts": self._send(200, {"files": self._artifact_files()}); return
         if self.path == "/artifacts.zip":
             body = self._artifact_zip(); self.send_response(200); self.send_header("Content-Type", "application/zip"); self.send_header("Content-Disposition", "attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); return
-        if self.path == "/api/timepro/history": self._send(200, {"timesheets": TIMEPRO.history()}); return
+        if self.path.startswith("/api/timepro/history"):
+            employee = parse_qs(urlparse(self.path).query).get("employee", [None])[0]
+            self._send(200, {"timesheets": TIMEPRO.history(employee)}); return
         if self.path == "/api/timepro/dashboard": self._send(200, TIMEPRO.dashboard()); return
         self._send(404, {"error": "not found"})
 
     def do_POST(self) -> None:
         try:
             if not self._authorized(): self._send(401, {"error": "authentication required"}); return
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > 1_000_000: self._send(413, {"error": "request too large"}); return
-            data = json.loads(self.rfile.read(length) or b"{}")
+            data = self._read_json()
             if self.path == "/api/timepro/timesheets":
                 record = TIMEPRO.create_timesheet(data)
                 self._send(201, {"timesheet": record}); return
@@ -104,8 +117,34 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
         except json.JSONDecodeError: self._send(400, {"error": "invalid JSON"})
         except TimeProValidationError as exc: self._send(422, {"error": str(exc)})
-        except (ValueError, TypeError): self._send(400, {"error": "invalid request"})
+        except ValueError as exc: self._send(413 if str(exc) == "request too large" else 400, {"error": str(exc)})
+        except (TypeError, KeyError): self._send(400, {"error": "invalid request"})
         except Exception as exc: self._send(500, {"error": str(exc)})
+
+    def do_PUT(self) -> None:
+        if not self._authorized(): self._send(401, {"error": "authentication required"}); return
+        if not self.path.startswith("/api/timepro/timesheets"):
+            self._send(404, {"error": "not found"}); return
+        try:
+            record_id = self._timepro_id()
+            if record_id is None: self._send(400, {"error": "timesheet id is required"}); return
+            record = TIMEPRO.update_timesheet(record_id, self._read_json())
+            if not record: self._send(404, {"error": "timesheet not found"}); return
+            self._send(200, {"timesheet": record})
+        except json.JSONDecodeError: self._send(400, {"error": "invalid JSON"})
+        except TimeProValidationError as exc: self._send(422, {"error": str(exc)})
+        except ValueError as exc: self._send(413 if str(exc) == "request too large" else 400, {"error": str(exc)})
+
+    def do_DELETE(self) -> None:
+        if not self._authorized(): self._send(401, {"error": "authentication required"}); return
+        if not self.path.startswith("/api/timepro/timesheets"):
+            self._send(404, {"error": "not found"}); return
+        try:
+            record_id = self._timepro_id()
+            if record_id is None: self._send(400, {"error": "timesheet id is required"}); return
+            if not TIMEPRO.delete_timesheet(record_id): self._send(404, {"error": "timesheet not found"}); return
+            self._send(200, {"deleted": True, "id": record_id})
+        except TimeProValidationError as exc: self._send(422, {"error": str(exc)})
 
     def log_message(self, format: str, *args) -> None: return
 
