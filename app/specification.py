@@ -33,18 +33,9 @@ class SpecificationBuilder:
     def build(self, mission: str) -> AppSpecification:
         text = mission.strip()
         lower = text.lower()
-
-        # TimePro is the first production target of the autonomous builder.
-        # Keep its contract deterministic so later planning/build/test stages
-        # operate from one canonical product definition.
         if "timepro" in lower or "folha de horas" in lower or "timesheet" in lower:
             features = list(TIMEPRO.features) + [
-                "forms",
-                "data storage",
-                "calculation",
-                "history",
-                "dashboard",
-                "mobile",
+                "forms", "data storage", "calculation", "history", "dashboard", "mobile",
             ]
             return AppSpecification(
                 mission=text,
@@ -52,7 +43,7 @@ class SpecificationBuilder:
                 app_type="web",
                 platforms=["web", "mobile-web"],
                 users=list(TIMEPRO.roles),
-                screens=list(TIMEPRO.screens),
+                screens=list(dict.fromkeys(list(TIMEPRO.screens) + ["Dashboard"])),
                 features=list(dict.fromkeys(features)),
                 data_entities=list(TIMEPRO.entities),
                 business_rules=[
@@ -74,7 +65,6 @@ class SpecificationBuilder:
         screens = ["Main"]
         users = ["User"]
         entities: list[str] = []
-
         rules = {
             "authentication": ("login", "sign in", "account", "senha", "connexion"),
             "data storage": ("database", "data", "dados", "save", "store", "persist"),
@@ -87,42 +77,29 @@ class SpecificationBuilder:
         for feature, keywords in rules.items():
             if any(keyword in lower for keyword in keywords):
                 features.append(feature)
-
         if "dashboard" in features:
             users.append("Manager")
             screens.append("Dashboard")
-        if "forms" in features:
-            screens.append("Form")
-        if "history" in features:
-            screens.append("History")
-        if "authentication" in features:
-            screens.append("Login")
-        if "data storage" in features:
-            entities.append("ApplicationRecord")
-
+        if "forms" in features: screens.append("Form")
+        if "history" in features: screens.append("History")
+        if "authentication" in features: screens.append("Login")
+        if "data storage" in features: entities.append("ApplicationRecord")
         security = ["Never expose secrets in generated source code", "Validate user-controlled input"]
         if "authentication" in features:
             security.append("Require explicit human approval before external account/login actions")
-
         acceptance = [
             "Generated project files exist and are non-empty",
             "Automated structural tests pass",
             "Detected requested features are represented in the generated project",
         ]
-        if "mobile" in features:
-            acceptance.append("Core interface is usable on a mobile viewport")
-
+        if "mobile" in features: acceptance.append("Core interface is usable on a mobile viewport")
         return AppSpecification(
             mission=text,
             app_name=self._app_name(text),
             app_type="web",
             platforms=["web", "mobile-web"] if "mobile" in features else ["web"],
-            users=users,
-            screens=screens,
-            features=features,
-            data_entities=entities,
-            security_requirements=security,
-            acceptance_criteria=acceptance,
+            users=users, screens=screens, features=features, data_entities=entities,
+            security_requirements=security, acceptance_criteria=acceptance,
         )
 
     @staticmethod
