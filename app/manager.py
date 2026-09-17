@@ -122,6 +122,28 @@ class Manager:
                     return False
                 result = message
                 self.memory.record("tests_passed", task_id=task.id, message=message)
+                # Repairs are conditional: the test task already performs bounded
+                # repair/retest loops. A successful test should not trigger a
+                # second unconditional rebuild.
+                repair = next((item for item in tasks if item.id == "repair"), None)
+                if repair is not None and self.memory.task_statuses.get("repair") != "completed":
+                    self.memory.task_statuses["repair"] = "completed"
+                    repair.status = "completed"
+                    self.memory.completed.append("Repair skipped: tests passed")
+                    self.memory.record("repair_skipped", reason="tests_passed")
+            elif task.id == "acceptance":
+                # Acceptance is a real gate, not just a placeholder task.
+                ok = self._run_quality_gate()
+                if not ok:
+                    message = "Acceptance checks failed"
+                    self.memory.task_statuses[task.id] = "failed"
+                    task.status = "failed"
+                    self.memory.errors.append(message)
+                    self.memory.record("acceptance_failed", task_id=task.id)
+                    self._save_tasks(tasks)
+                    self.memory.save(self.memory_path)
+                    return False
+                result = "Acceptance checks passed"
             else:
                 result = self.executor.execute(task.title, self.workspace, self.memory.mission)
 
