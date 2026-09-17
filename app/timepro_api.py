@@ -41,7 +41,7 @@ class TimeProService:
     def __init__(self, path: str | Path = "data/timepro.db") -> None:
         self.db = create_timepro_database(path)
 
-    def create_timesheet(self, payload: dict) -> dict:
+    def _validate_payload(self, payload: dict) -> tuple[str, str, str, str, int, str, str]:
         employee = str(payload.get("employee", "")).strip()
         work_date = str(payload.get("work_date", "")).strip()
         location = str(payload.get("location", "")).strip()
@@ -54,12 +54,43 @@ class TimeProService:
             datetime.strptime(work_date, "%Y-%m-%d")
         except ValueError:
             raise TimeProValidationError("work_date must use YYYY-MM-DD format")
-        total_minutes = calculate_total(start_time, end_time, payload.get("pause_minutes", 0))
+        try:
+            pause = int(payload.get("pause_minutes", 0))
+        except (TypeError, ValueError):
+            raise TimeProValidationError("pause_minutes must be an integer")
+        calculate_total(start_time, end_time, pause)
+        return employee, work_date, location, start_time, pause, end_time, note
+
+    def create_timesheet(self, payload: dict) -> dict:
+        employee, work_date, location, start_time, pause, end_time, note = self._validate_payload(payload)
+        total_minutes = calculate_total(start_time, end_time, pause)
         self.db.execute(
             "INSERT INTO timesheets (employee, work_date, location, start_time, pause_minutes, end_time, total_minutes, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (employee, work_date, location, start_time, int(payload.get("pause_minutes", 0)), end_time, total_minutes, note),
+            (employee, work_date, location, start_time, pause, end_time, total_minutes, note),
         )
         return self.db.fetch_one("SELECT * FROM timesheets WHERE id = last_insert_rowid()") or {}
+
+    def update_timesheet(self, timesheet_id: int, payload: dict) -> dict:
+        try:
+            record_id = int(timesheet_id)
+        except (TypeError, ValueError):
+            raise TimeProValidationError("timesheet id must be an integer")
+        employee, work_date, location, start_time, pause, end_time, note = self._validate_payload(payload)
+        total_minutes = calculate_total(start_time, end_time, pause)
+        updated = self.db.execute(
+            "UPDATE timesheets SET employee=?, work_date=?, location=?, start_time=?, pause_minutes=?, end_time=?, total_minutes=?, note=? WHERE id=?",
+            (employee, work_date, location, start_time, pause, end_time, total_minutes, note, record_id),
+        )
+        if updated == 0:
+            return {}
+        return self.db.fetch_one("SELECT * FROM timesheets WHERE id = ?", (record_id,)) or {}
+
+    def delete_timesheet(self, timesheet_id: int) -> bool:
+        try:
+            record_id = int(timesheet_id)
+        except (TypeError, ValueError):
+            raise TimeProValidationError("timesheet id must be an integer")
+        return self.db.execute("DELETE FROM timesheets WHERE id = ?", (record_id,)) > 0
 
     def history(self, employee: str | None = None) -> list[dict]:
         if employee:
