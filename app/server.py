@@ -14,10 +14,11 @@ class Handler(BaseHTTPRequestHandler):
         body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
     def _send_manifest(self):
         body=TIMEPRO_MANIFEST.read_bytes(); self.send_response(200); self.send_header("Content-Type","application/manifest+json"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
+    def _filters(self):
+        q=parse_qs(urlparse(self.path).query); return q.get("employee",[None])[0],q.get("company",[None])[0],q.get("date_from",[None])[0],q.get("date_to",[None])[0]
     def _send_csv(self):
-        output=io.StringIO(); writer=csv.writer(output); writer.writerow(["ID","Employé","Date","Lieu","Début","Pause (min)","Fin","Total (min)","Total","Recado","Signature","Pièces jointes"])
-        for r in TIMEPRO.history():
-            writer.writerow([r["id"],r["employee"],r["work_date"],r["location"],r["start_time"],r["pause_minutes"],r["end_time"],r["total_minutes"],f'{int(r["total_minutes"])//60}h {int(r["total_minutes"])%60:02d}min',r["note"],"oui" if r.get("has_signature") else "non",len(r.get("attachments",[]))])
+        employee,company,date_from,date_to=self._filters(); output=io.StringIO(); writer=csv.writer(output); writer.writerow(["ID","Employé","Entreprise","Date","Lieu","Début","Pause (min)","Fin","Total (min)","Total","Recado","Signature","Pièces jointes"])
+        for r in TIMEPRO.history(employee,company,date_from,date_to): writer.writerow([r["id"],r["employee"],r.get("company",""),r["work_date"],r["location"],r["start_time"],r["pause_minutes"],r["end_time"],r["total_minutes"],f'{int(r["total_minutes"])//60}h {int(r["total_minutes"])%60:02d}min',r["note"],"oui" if r.get("has_signature") else "non",len(r.get("attachments",[]))])
         body=output.getvalue().encode("utf-8-sig"); self.send_response(200); self.send_header("Content-Type","text/csv; charset=utf-8"); self.send_header("Content-Disposition","attachment; filename=timepro-feuilles.csv"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _authorized(self):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
@@ -48,8 +49,10 @@ class Handler(BaseHTTPRequestHandler):
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
         parsed=urlparse(self.path)
         if parsed.path=="/api/timepro/export.csv": self._send_csv(); return
-        if parsed.path=="/api/timepro/history": self._send(200,{"timesheets":TIMEPRO.history(parse_qs(parsed.query).get("employee",[None])[0])}); return
-        if parsed.path=="/api/timepro/dashboard": self._send(200,TIMEPRO.dashboard()); return
+        if parsed.path=="/api/timepro/history":
+            employee,company,date_from,date_to=self._filters(); self._send(200,{"timesheets":TIMEPRO.history(employee,company,date_from,date_to)}); return
+        if parsed.path=="/api/timepro/dashboard":
+            employee,company,date_from,date_to=self._filters(); self._send(200,TIMEPRO.dashboard(employee,company,date_from,date_to)); return
         self._send(404,{"error":"not found"})
     def do_POST(self):
         try:
