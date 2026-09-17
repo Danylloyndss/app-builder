@@ -6,12 +6,14 @@ from urllib.parse import parse_qs, urlparse
 from .approvals import ApprovalStore
 from .manager import Manager
 from .timepro_api import TimeProService, TimeProValidationError
-WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
+WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
 class Handler(BaseHTTPRequestHandler):
     def _send(self,status,payload):
         body=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
     def _send_html(self,path):
         body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
+    def _send_manifest(self):
+        body=TIMEPRO_MANIFEST.read_bytes(); self.send_response(200); self.send_header("Content-Type","application/manifest+json"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _authorized(self):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
     def _status_payload(self,memory): return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"approvals":APPROVALS.list_pending()}
@@ -33,6 +35,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/health": self._send(200,{"status":"ok","service":"app-builder-agent"}); return
         if self.path in ("/","/index.html"): self._send_html(INDEX); return
         if self.path in ("/timepro","/timepro/"): self._send_html(TIMEPRO_INDEX); return
+        if self.path=="/timepro-manifest.json": self._send_manifest(); return
         if self.path=="/status": self._send(200,self._status_payload(Manager(workspace=WORKSPACE).memory)); return
         if self.path=="/approvals": self._send(200,{"approvals":APPROVALS.list_pending()}); return
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
@@ -72,8 +75,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc: self._send(500,{"error":str(exc)})
     def do_PUT(self):
         if not self._authorized(): self._send(401,{"error":"authentication required"}); return
-        parsed=urlparse(self.path)
-        if parsed.path!="/api/timepro/timesheets": self._send(404,{"error":"not found"}); return
+        if urlparse(self.path).path!="/api/timepro/timesheets": self._send(404,{"error":"not found"}); return
         try:
             record_id=self._timepro_id()
             if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
@@ -85,8 +87,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc: self._send(413 if str(exc)=="request too large" else 400,{"error":str(exc)})
     def do_DELETE(self):
         if not self._authorized(): self._send(401,{"error":"authentication required"}); return
-        parsed=urlparse(self.path)
-        if parsed.path!="/api/timepro/timesheets": self._send(404,{"error":"not found"}); return
+        if urlparse(self.path).path!="/api/timepro/timesheets": self._send(404,{"error":"not found"}); return
         try:
             record_id=self._timepro_id()
             if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
