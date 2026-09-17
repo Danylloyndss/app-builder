@@ -10,7 +10,7 @@ from .planner import Planner
 from .policy import ActionPolicy
 from .quality import QualityGate
 from .specification import SpecificationBuilder
-from .tasks import TaskBuilder
+from .tasks import BuildTask, TaskBuilder
 from .tester import Tester
 
 
@@ -19,7 +19,7 @@ class Manager:
         self.workspace = Path(workspace)
         self.memory_path = self.workspace / "state.json"
         self.memory = ProjectMemory.load(self.memory_path)
-        self.planner = Planner()
+        self.planner = Planner()  # Kept for backwards-compatible plan output.
         self.specification = SpecificationBuilder()
         self.architecture = ArchitectureBuilder()
         self.tasks = TaskBuilder()
@@ -30,7 +30,7 @@ class Manager:
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.max_retries = max_retries
 
-    def _prepare_project(self, mission: str) -> None:
+    def _prepare_project(self, mission: str) -> list[BuildTask]:
         artifact_dir = self.workspace / ".app-builder"
         spec = self.specification.build(mission)
         spec.save(artifact_dir / "spec.json")
@@ -50,6 +50,18 @@ class Manager:
             task_ids=[task.id for task in tasks],
             dependencies={task.id: task.dependencies for task in tasks},
         )
+        return tasks
+
+    def _load_tasks(self) -> list[BuildTask]:
+        path = self.workspace / ".app-builder" / "tasks.json"
+        if not path.exists():
+            return self._prepare_project(self.memory.mission)
+        import json
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [BuildTask(**item) for item in data]
+
+    def _save_tasks(self, tasks: list[BuildTask]) -> None:
+        self.tasks.save(tasks, self.workspace / ".app-builder" / "tasks.json")
 
     def _run_quality_gate(self) -> bool:
         spec = self.specification.build(self.memory.mission)
@@ -67,81 +79,151 @@ class Manager:
             self.memory.errors.extend(report.errors)
         return report.passed
 
-    def run(self, mission: str, resume: bool = False) -> ProjectMemory:
-        if resume and self.memory.mission == mission and self.memory.plan:
-            if self.memory.status == "waiting_for_approval" and self.memory.current_task:
-                try:
-                    start_index = self.memory.plan.index(self.memory.current_task)
-                except ValueError:
-                    start_index = len(self.memory.completed)
-            else:
-                start_index = len(self.memory.completed)
-        else:
-            self.memory = ProjectMemory(mission=mission, status="planning")
-            self._prepare_project(mission)
-            self.memory.plan = self.planner.create_plan(mission)
-            self.memory.record("plan_created", tasks=self.memory.plan)
+    def _dependencies_complete(self, task: BuildTask, statuses: dict[str, str]) -> bool:
+        return all(statuses.get(dep) == "completed" for dep in task.dependencies)
+
+    def _find_next_task(self, tasks: list[BuildTask]) -> BuildTask | None:
+        statuses = self.memory.task_statuses
+        for task in tasks:
+            if statuses.get(task.id, task.status) != "completed" and self._dependencies_complete(task, statuses):
+                return task
+        return None
+
+    def _execute_task(self, task: BuildTask, tasks: list[BuildTask]) -> bool:
+        self.memory.current_task = task.id
+        self.memory.status = "running"
+        self.memory.task_statuses[task.id] = "running"
+        task.status = "running"
+        self._save_tasks(tasks)
+        self.memory.record("task_started", task_id=task.id, title=task.title, kind=task.kind)
+        self.memory.save(self.memory_path)
+
+        # The graph is the source of truth for sensitive actions; policy remains a second safety layer.
+        decision = self.policy.decide(task.title)
+        needs_approval = task.requires_approval or decision.requires_approval
+        approved = self.approvals.approved_for(task.title)
+        if needs_approval and not approved:
+            existing = next((x for x in self.approvals.list_pending() if x["action"] == task.title), None)
+            request = existing or self.approvals.create(
+                task.title,
+                "Human approval required before this task can execute.",
+            )
+            self.memory.task_statuses[task.id] = "waiting_for_approval"
+            task.status = "waiting_for_approval"
+            self.memory.status = "waiting_for_approval"
+            self.memory.record(
+                "approval_requested",
+                request_id=request["id"] if isinstance(request, dict) else request.id,
+                task_id=task.id,
+                task=task.title,
+            )
+            self._save_tasks(tasks)
             self.memory.save(self.memory_path)
-            start_index = 0
+            return False
 
-        for index, task in enumerate(self.memory.plan[start_index:], start=start_index):
-            decision = self.policy.decide(task)
-            approved = self.approvals.approved_for(task)
-            if not decision.allowed and not approved:
-                if decision.requires_approval:
-                    existing = next((x for x in self.approvals.list_pending() if x["action"] == task), None)
-                    request = existing or self.approvals.create(task, decision.reason)
-                    self.memory.status = "waiting_for_approval"
-                    self.memory.current_task = task
-                    self.memory.record(
-                        "approval_requested",
-                        request_id=request["id"] if isinstance(request, dict) else request.id,
-                        task=task,
-                    )
-                else:
-                    self.memory.status = "blocked"
-                    self.memory.errors.append(decision.reason)
-                    self.memory.record("action_blocked", task=task, reason=decision.reason)
-                self.memory.save(self.memory_path)
-                return self.memory
-
-            self.memory.status = "running"
-            self.memory.current_task = task
-            self.memory.record("task_started", index=index, task=task)
+        if not decision.allowed and not decision.requires_approval:
+            self.memory.task_statuses[task.id] = "blocked"
+            task.status = "blocked"
+            self.memory.status = "blocked"
+            self.memory.errors.append(decision.reason)
+            self.memory.record("action_blocked", task_id=task.id, reason=decision.reason)
+            self._save_tasks(tasks)
             self.memory.save(self.memory_path)
+            return False
 
-            if task != "Run tests":
-                result = self.executor.execute(task, self.workspace, self.memory.mission)
-                self.memory.completed.append(result)
-                if approved:
-                    self.approvals.consume(approved["id"])
-                    self.memory.record("approval_consumed", request_id=approved["id"], task=task)
-                self.memory.record("task_completed", index=index, task=task, result=result)
-                self.memory.save(self.memory_path)
-                continue
-
-            ok, message = self.tester.test(self.workspace)
-            attempts = 0
-            while not ok and attempts < self.max_retries:
-                attempts += 1
-                self.memory.errors.append(f"Attempt {attempts}: {message}")
-                self.memory.record("repair", attempt=attempts, error=message)
-                self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
+        try:
+            if task.id == "test":
                 ok, message = self.tester.test(self.workspace)
-
-            if ok:
-                self.memory.completed.append(message)
-                self.memory.record("tests_passed", message=message)
+                attempts = 0
+                while not ok and attempts < self.max_retries:
+                    attempts += 1
+                    self.memory.errors.append(f"Attempt {attempts}: {message}")
+                    self.memory.record("repair", attempt=attempts, error=message)
+                    self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
+                    ok, message = self.tester.test(self.workspace)
+                if not ok:
+                    self.memory.task_statuses[task.id] = "failed"
+                    task.status = "failed"
+                    self.memory.errors.append(message)
+                    self.memory.record("tests_failed", task_id=task.id, message=message)
+                    return False
+                result = message
+                self.memory.record("tests_passed", task_id=task.id, message=message)
             else:
-                self.memory.errors.append(message)
-                self.memory.record("tests_failed", message=message)
+                result = self.executor.execute(task.title, self.workspace, self.memory.mission)
+
+            self.memory.task_statuses[task.id] = "completed"
+            task.status = "completed"
+            self.memory.completed.append(result)
+            if approved:
+                self.approvals.consume(approved["id"])
+                self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
+            self.memory.record("task_completed", task_id=task.id, title=task.title, result=result)
+            self._save_tasks(tasks)
             self.memory.save(self.memory_path)
+            return True
+        except Exception as exc:
+            self.memory.task_statuses[task.id] = "failed"
+            task.status = "failed"
+            self.memory.errors.append(f"Task {task.id} failed: {exc}")
+            self.memory.record("task_failed", task_id=task.id, error=str(exc))
+            self._save_tasks(tasks)
+            self.memory.save(self.memory_path)
+            return False
+
+    def run(self, mission: str, resume: bool = False) -> ProjectMemory:
+        if not resume or self.memory.mission != mission:
+            self.memory = ProjectMemory(mission=mission, status="planning")
+            tasks = self._prepare_project(mission)
+            # Preserve the original human-readable plan API while execution uses the graph.
+            self.memory.plan = [task.title for task in tasks]
+            self.memory.record("plan_created", tasks=self.memory.plan, execution="dependency_graph")
+            self.memory.task_statuses = {task.id: "pending" for task in tasks}
+            self.memory.save(self.memory_path)
+        else:
+            tasks = self._load_tasks()
+            self.memory.record("mission_resumed", current_task=self.memory.current_task)
+            # An approval-pause leaves the task waiting; after approval it becomes runnable again.
+            for task in tasks:
+                if self.memory.task_statuses.get(task.id) == "waiting_for_approval":
+                    if self.approvals.approved_for(task.title):
+                        self.memory.task_statuses[task.id] = "pending"
+                        task.status = "pending"
+            self._save_tasks(tasks)
+            self.memory.save(self.memory_path)
+
+        while True:
+            task = self._find_next_task(tasks)
+            if task is None:
+                waiting = [t for t in tasks if self.memory.task_statuses.get(t.id) == "waiting_for_approval"]
+                failed = [t for t in tasks if self.memory.task_statuses.get(t.id) == "failed"]
+                if waiting:
+                    self.memory.status = "waiting_for_approval"
+                    self.memory.current_task = waiting[0].id
+                    self.memory.save(self.memory_path)
+                    return self.memory
+                if failed:
+                    self.memory.status = "completed_with_errors"
+                    self.memory.current_task = failed[0].id
+                    self.memory.save(self.memory_path)
+                    return self.memory
+                break
+
+            if not self._execute_task(task, tasks):
+                if self.memory.status in {"waiting_for_approval", "blocked"}:
+                    return self.memory
+                # A failed test/task stops the graph rather than falsely completing downstream work.
+                if self.memory.task_statuses.get(task.id) == "failed":
+                    self.memory.status = "completed_with_errors"
+                    self.memory.save(self.memory_path)
+                    return self.memory
 
         self.memory.status = "quality_review"
-        self.memory.save(self.memory_path)
-        self._run_quality_gate()
         self.memory.current_task = ""
-        self.memory.status = "completed" if not self.memory.errors else "completed_with_errors"
+        self.memory.save(self.memory_path)
+        quality_ok = self._run_quality_gate()
+        self.memory.current_task = ""
+        self.memory.status = "completed" if quality_ok and not self.memory.errors else "completed_with_errors"
         self.memory.record("mission_finished", status=self.memory.status)
         self.memory.save(self.memory_path)
         return self.memory
