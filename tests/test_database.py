@@ -23,3 +23,24 @@ def test_timepro_schema_is_ready(tmp_path: Path):
 
     row = db.fetch_one("SELECT employee, total_minutes FROM timesheets WHERE employee = ?", ("Danyllo",))
     assert row == {"employee": "Danyllo", "total_minutes": 510}
+
+
+def test_timepro_attachment_and_signature_tables_are_ready(tmp_path: Path):
+    db = create_timepro_database(tmp_path / "timepro.db")
+    db.execute(
+        "INSERT INTO timesheets "
+        "(employee, work_date, start_time, end_time, total_minutes) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("Danyllo", "2026-09-17", "08:00", "17:00", 510),
+    )
+    timesheet_id = db.fetch_one("SELECT id FROM timesheets")["id"]
+    db.execute(
+        "INSERT INTO timesheet_attachments (timesheet_id, filename, stored_path, mime_type) VALUES (?, ?, ?, ?)",
+        (timesheet_id, "chantier.jpg", "data/timepro_uploads/chantier.jpg", "image/jpeg"),
+    )
+    db.execute(
+        "INSERT INTO timesheet_signatures (timesheet_id, stored_path) VALUES (?, ?)",
+        (timesheet_id, "data/timepro_signatures/1.png"),
+    )
+    assert db.fetch_one("SELECT filename FROM timesheet_attachments WHERE timesheet_id = ?", (timesheet_id,))["filename"] == "chantier.jpg"
+    assert db.fetch_one("SELECT stored_path FROM timesheet_signatures WHERE timesheet_id = ?", (timesheet_id,))["stored_path"].endswith("1.png")
