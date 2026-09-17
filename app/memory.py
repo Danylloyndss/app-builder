@@ -13,11 +13,12 @@ class ProjectMemory:
     errors: list[str] = field(default_factory=list)
     status: str = "idle"
     current_task: str = ""
+    task_statuses: dict[str, str] = field(default_factory=dict)
     history: list[dict] = field(default_factory=list)
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")
+        path.write_text(json.dumps(asdict(self), indent=2, ensure_ascii=False), encoding="utf-8")
 
     @classmethod
     def load(cls, path: Path) -> "ProjectMemory":
@@ -27,6 +28,7 @@ class ProjectMemory:
         # Keep backward compatibility with V1 memory files.
         data.setdefault("status", "idle")
         data.setdefault("current_task", "")
+        data.setdefault("task_statuses", {})
         data.setdefault("history", [])
         return cls(**data)
 
