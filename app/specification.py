@@ -38,6 +38,14 @@ class SpecificationBuilder:
         # Keep its contract deterministic so later planning/build/test stages
         # operate from one canonical product definition.
         if "timepro" in lower or "folha de horas" in lower or "timesheet" in lower:
+            features = list(TIMEPRO.features) + [
+                "forms",
+                "data storage",
+                "calculation",
+                "history",
+                "dashboard",
+                "mobile",
+            ]
             return AppSpecification(
                 mission=text,
                 app_name=TIMEPRO.name,
@@ -45,7 +53,7 @@ class SpecificationBuilder:
                 platforms=["web", "mobile-web"],
                 users=list(TIMEPRO.roles),
                 screens=list(TIMEPRO.screens),
-                features=list(TIMEPRO.features),
+                features=list(dict.fromkeys(features)),
                 data_entities=list(TIMEPRO.entities),
                 business_rules=[
                     "Total = end - start - break",
