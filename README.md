@@ -22,6 +22,9 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 - Build concurrency protection so two missions cannot mutate the same workspace simultaneously.
 - Artifact inventory at `GET /artifacts` and downloadable build bundle at `GET /artifacts.zip`.
 - Railway healthcheck, restart policy, automated tests and pre-deploy tests.
+- Dependency-free SQLite database adapter with transactional CRUD operations.
+- TimePro persistence schema with indexes for employee and work-date queries.
+- Architecture now selects a real persistence boundary for apps that require data storage.
 
 ## TimePro definition of done
 
@@ -33,7 +36,7 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 6. Core flow is responsive on a mobile viewport.
 7. Optional fields never block submission.
 
-The repository contains automated tests for the TimePro specification, generated MVP, quality gate and complete Manager end-to-end flow.
+The repository contains automated tests for the TimePro specification, generated MVP, quality gate, complete Manager end-to-end flow, and the new database adapter/persistence schema.
 
 ## Control plane
 
@@ -56,12 +59,13 @@ The repository contains automated tests for the TimePro specification, generated
 - **Executor / Build Engine** — implementation.
 - **Tester** — automated verification.
 - **Quality Gate** — security and acceptance verification.
+- **Database Adapter** — transactional persistence boundary; SQLite is the default implementation.
 - **Approval Store / Policy** — human-in-the-loop safety.
 - **Railway** — deployment runtime.
 
 ## Next expansion layers
 
-- Real backend/database adapters.
+- Wire the generated TimePro screens to the persistence adapter through a backend service.
 - Authentication provider adapters with approval gates.
 - External integrations and secret-management adapters.
 - Browser/runtime integration tests.
