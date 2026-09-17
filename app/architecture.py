@@ -26,17 +26,21 @@ class Architecture:
 
 
 class ArchitectureBuilder:
-    """Convert a structured specification into a deterministic V1 architecture."""
+    """Convert a structured specification into a deterministic architecture."""
 
     def build(self, spec: AppSpecification) -> Architecture:
         features = set(spec.features)
         authentication = "demo authentication" if "authentication" in features else "none"
-        database = "browser local storage" if "data storage" in features else "none"
+        persistent_data = "data storage" in features
+        database = "SQLite adapter" if persistent_data else "none"
+        storage = "database persistence" if persistent_data else "none"
+        backend = "Python service boundary" if persistent_data else "none (prototype)"
         components = ["frontend"]
         constraints = [
             "Prototype credentials must never be treated as production security",
             "Secrets must not be written into source files",
             "Human approval is required for external authentication, payment, communication, or production release",
+            "Database access must go through the adapter boundary",
         ]
 
         if "dashboard" in features:
@@ -49,16 +53,16 @@ class ArchitectureBuilder:
             components.append("calculation engine")
         if "authentication" in features:
             components.append("authentication boundary")
-        if "data storage" in features:
-            components.append("persistence layer")
+        if persistent_data:
+            components.extend(["backend service", "persistence adapter"])
 
         return Architecture(
             app_type=spec.app_type,
             frontend="responsive HTML/CSS/JavaScript",
-            backend="none (prototype)" if "data storage" not in features else "prototype browser-only backend boundary",
+            backend=backend,
             database=database,
             authentication=authentication,
-            storage=database,
+            storage=storage,
             integrations=list(spec.integrations),
             components=components,
             constraints=constraints,
