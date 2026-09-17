@@ -73,6 +73,24 @@ CREATE TABLE IF NOT EXISTS timesheets (
 );
 CREATE INDEX IF NOT EXISTS idx_timesheets_work_date ON timesheets(work_date);
 CREATE INDEX IF NOT EXISTS idx_timesheets_employee ON timesheets(employee);
+
+CREATE TABLE IF NOT EXISTS timesheet_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timesheet_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    stored_path TEXT NOT NULL,
+    mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(timesheet_id) REFERENCES timesheets(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_timesheet_attachments_timesheet ON timesheet_attachments(timesheet_id);
+
+CREATE TABLE IF NOT EXISTS timesheet_signatures (
+    timesheet_id INTEGER PRIMARY KEY,
+    stored_path TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(timesheet_id) REFERENCES timesheets(id) ON DELETE CASCADE
+);
 """
 
 
