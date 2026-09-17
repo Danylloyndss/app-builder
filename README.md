@@ -73,3 +73,5 @@ The repository contains automated tests for the TimePro specification, generated
 - Production release automation after human approval.
 
 The design goal remains: continue autonomously until a genuine external action requires the human, then resume from durable state.
+
+Build validation marker: 2026-09-17 persistence-layer deployment verification.
