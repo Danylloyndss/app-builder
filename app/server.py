@@ -72,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorized(): self._send(401,{"error":"authentication required"}); return
             data=self._read_json(); parsed=urlparse(self.path)
             if parsed.path=="/api/timepro/timesheets": self._send(201,{"timesheet":TIMEPRO.create_timesheet(data)}); return
-            if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64",""))}); return
+            if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64", ""))}); return
             if parsed.path=="/api/timepro/signature": TIMEPRO.save_signature(data.get("timesheet_id"),data.get("content_base64","")); self._send(201,{"saved":True}); return
             if parsed.path in ("/run","/resume"):
                 mission=str(data.get("mission","")).strip()
@@ -109,12 +109,19 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc: self._send(413 if str(exc)=="request too large" else 400,{"error":str(exc)})
     def do_DELETE(self):
         if not self._authorized(): self._send(401,{"error":"authentication required"}); return
-        if urlparse(self.path).path!="/api/timepro/timesheets": self._send(404,{"error":"not found"}); return
+        parsed=urlparse(self.path)
         try:
             record_id=self._timepro_id()
-            if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
-            if not TIMEPRO.delete_timesheet(record_id): self._send(404,{"error":"timesheet not found"}); return
-            self._send(200,{"deleted":True,"id":record_id})
+            if parsed.path=="/api/timepro/timesheets":
+                if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
+                if not TIMEPRO.delete_timesheet(record_id): self._send(404,{"error":"timesheet not found"}); return
+                self._send(200,{"deleted":True,"id":record_id}); return
+            if parsed.path=="/api/timepro/attachments":
+                aid=self._timepro_id()
+                if aid is None: self._send(400,{"error":"attachment id is required"}); return
+                if not TIMEPRO.delete_attachment(aid): self._send(404,{"error":"attachment not found"}); return
+                self._send(200,{"deleted":True,"id":aid}); return
+            self._send(404,{"error":"not found"})
         except TimeProValidationError as exc: self._send(422,{"error":str(exc)})
     def log_message(self,format,*args): return
 def serve():
