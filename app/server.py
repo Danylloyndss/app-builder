@@ -20,6 +20,15 @@ class Handler(BaseHTTPRequestHandler):
         employee,company,date_from,date_to=self._filters(); output=io.StringIO(); writer=csv.writer(output); writer.writerow(["ID","Employé","Entreprise","Date","Lieu","Début","Pause (min)","Fin","Total (min)","Total","Recado","Signature","Pièces jointes"])
         for r in TIMEPRO.history(employee,company,date_from,date_to): writer.writerow([r["id"],r["employee"],r.get("company",""),r["work_date"],r["location"],r["start_time"],r["pause_minutes"],r["end_time"],r["total_minutes"],f'{int(r["total_minutes"])//60}h {int(r["total_minutes"])%60:02d}min',r["note"],"oui" if r.get("has_signature") else "non",len(r.get("attachments",[]))])
         body=output.getvalue().encode("utf-8-sig"); self.send_response(200); self.send_header("Content-Type","text/csv; charset=utf-8"); self.send_header("Content-Disposition","attachment; filename=timepro-feuilles.csv"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
+    def _send_attachment(self):
+        q=parse_qs(urlparse(self.path).query)
+        try: aid=int(q.get("id",[None])[0])
+        except (TypeError,ValueError): self._send(400,{"error":"attachment id is required"}); return
+        row=TIMEPRO.db.fetch_one("SELECT filename,stored_path,mime_type FROM timesheet_attachments WHERE id=?",(aid,))
+        if not row: self._send(404,{"error":"attachment not found"}); return
+        path=Path(row["stored_path"]).resolve(); root=TIMEPRO.root.resolve()
+        if root not in path.parents or not path.is_file(): self._send(404,{"error":"attachment not found"}); return
+        body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type",row["mime_type"]); self.send_header("Content-Disposition",f'inline; filename="{Path(row["filename"]).name}"'); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _authorized(self):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
     def _status_payload(self,memory): return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"approvals":APPROVALS.list_pending()}
@@ -49,6 +58,7 @@ class Handler(BaseHTTPRequestHandler):
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
         parsed=urlparse(self.path)
         if parsed.path=="/api/timepro/export.csv": self._send_csv(); return
+        if parsed.path=="/api/timepro/attachments": self._send_attachment(); return
         if parsed.path=="/api/timepro/history":
             employee,company,date_from,date_to=self._filters(); self._send(200,{"timesheets":TIMEPRO.history(employee,company,date_from,date_to)}); return
         if parsed.path=="/api/timepro/dashboard":
