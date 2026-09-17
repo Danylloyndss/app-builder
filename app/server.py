@@ -2,9 +2,12 @@
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
+import io
 import json
 import os
 from pathlib import Path
+import threading
+import zipfile
 
 from .approvals import ApprovalStore
 from .manager import Manager
@@ -13,6 +16,7 @@ WORKSPACE = "workspace"
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "static" / "index.html"
 APPROVALS = ApprovalStore(f"{WORKSPACE}/approvals.json")
+RUN_LOCK = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -45,6 +49,26 @@ class Handler(BaseHTTPRequestHandler):
             "approvals": APPROVALS.list_pending(),
         }
 
+    def _artifact_files(self) -> list[str]:
+        root = Path(WORKSPACE)
+        if not root.exists():
+            return []
+        files = []
+        for path in root.rglob("*"):
+            if not path.is_file() or ".git" in path.parts:
+                continue
+            files.append(path.relative_to(root).as_posix())
+        return sorted(files)
+
+    def _artifact_zip(self) -> bytes:
+        root = Path(WORKSPACE)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for relative in self._artifact_files():
+                path = root / relative
+                archive.write(path, arcname=relative)
+        return buffer.getvalue()
+
     def do_GET(self) -> None:
         if self.path == "/health":
             self._send(200, {"status": "ok", "service": "app-builder-agent"})
@@ -63,6 +87,18 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/approvals":
             self._send(200, {"approvals": APPROVALS.list_pending()})
             return
+        if self.path == "/artifacts":
+            self._send(200, {"files": self._artifact_files()})
+            return
+        if self.path == "/artifacts.zip":
+            body = self._artifact_zip()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", "attachment; filename=app-builder-artifacts.zip")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self._send(404, {"error": "not found"})
 
     def do_POST(self) -> None:
@@ -80,7 +116,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not mission or len(mission) > 20_000:
                     self._send(400, {"error": "mission is required and must be <= 20000 characters"})
                     return
-                memory = Manager(workspace=WORKSPACE).run(mission, resume=self.path == "/resume")
+                if not RUN_LOCK.acquire(blocking=False):
+                    self._send(409, {"error": "another build is already running"})
+                    return
+                try:
+                    memory = Manager(workspace=WORKSPACE).run(mission, resume=self.path == "/resume")
+                finally:
+                    RUN_LOCK.release()
                 self._send(200, self._status_payload(memory))
                 return
             if self.path == "/approval":
@@ -100,10 +142,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"approval": result})
                 return
             self._send(404, {"error": "not found"})
-        except (ValueError, TypeError):
-            self._send(400, {"error": "invalid request"})
         except json.JSONDecodeError:
             self._send(400, {"error": "invalid JSON"})
+        except (ValueError, TypeError):
+            self._send(400, {"error": "invalid request"})
         except Exception as exc:
             self._send(500, {"error": str(exc)})
 
