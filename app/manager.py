@@ -1,9 +1,11 @@
 """Manager that coordinates the App Builder V1 components."""
 
 from pathlib import Path
+import json
 
 from .approvals import ApprovalStore
 from .architecture import ArchitectureBuilder
+from .checkpoints import CheckpointStore
 from .executor import Executor
 from .memory import ProjectMemory
 from .planner import Planner
@@ -28,16 +30,33 @@ class Manager:
         self.tester = Tester()
         self.policy = ActionPolicy()
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
+        self.checkpoints = CheckpointStore(self.workspace)
         self.max_retries = max_retries
 
     def _prepare_project(self, mission: str) -> list[BuildTask]:
         artifact_dir = self.workspace / ".app-builder"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        # Keep a durable mission copy for older components and external inspection.
+        (artifact_dir / "mission.txt").write_text(mission, encoding="utf-8")
         spec = self.specification.build(mission)
         spec.save(artifact_dir / "spec.json")
         architecture = self.architecture.build(spec)
         architecture.save(artifact_dir / "architecture.json")
         tasks = self.tasks.build(spec, architecture)
         self.tasks.save(tasks, artifact_dir / "tasks.json")
+        manifest = {
+            "builder_version": "v1",
+            "app_name": spec.app_name,
+            "app_type": spec.app_type,
+            "platforms": spec.platforms,
+            "mission": mission,
+            "acceptance_criteria": spec.acceptance_criteria,
+            "security_requirements": spec.security_requirements,
+            "task_ids": [task.id for task in tasks],
+        }
+        (artifact_dir / "build_manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         self.memory.record("specification_created", features=spec.features, screens=spec.screens)
         self.memory.record("architecture_created", components=architecture.components, frontend=architecture.frontend, storage=architecture.storage)
         self.memory.record("task_graph_created", task_ids=[task.id for task in tasks], dependencies={task.id: task.dependencies for task in tasks})
@@ -47,7 +66,6 @@ class Manager:
         path = self.workspace / ".app-builder" / "tasks.json"
         if not path.exists():
             return self._prepare_project(self.memory.mission)
-        import json
         return [BuildTask(**item) for item in json.loads(path.read_text(encoding="utf-8"))]
 
     def _save_tasks(self, tasks: list[BuildTask]) -> None:
@@ -69,6 +87,14 @@ class Manager:
         statuses = self.memory.task_statuses
         return next((task for task in tasks if statuses.get(task.id, task.status) != "completed" and self._dependencies_complete(task, statuses)), None)
 
+    def _checkpoint_before_change(self, task: BuildTask) -> None:
+        if task.id in {"structure", "implement", "test", "security", "acceptance"}:
+            try:
+                path = self.checkpoints.create(task.id)
+                self.memory.record("checkpoint_created", task_id=task.id, path=str(path))
+            except FileNotFoundError:
+                pass
+
     def _execute_task(self, task: BuildTask, tasks: list[BuildTask]) -> bool:
         self.memory.current_task = task.title
         self.memory.status = "running"
@@ -76,6 +102,7 @@ class Manager:
         task.status = "running"
         self._save_tasks(tasks)
         self.memory.record("task_started", task_id=task.id, title=task.title, kind=task.kind)
+        self._checkpoint_before_change(task)
         self.memory.save(self.memory_path)
 
         decision = self.policy.decide(task.title)
@@ -122,9 +149,6 @@ class Manager:
                     return False
                 result = message
                 self.memory.record("tests_passed", task_id=task.id, message=message)
-                # Repairs are conditional: the test task already performs bounded
-                # repair/retest loops. A successful test should not trigger a
-                # second unconditional rebuild.
                 repair = next((item for item in tasks if item.id == "repair"), None)
                 if repair is not None and self.memory.task_statuses.get("repair") != "completed":
                     self.memory.task_statuses["repair"] = "completed"
@@ -132,7 +156,6 @@ class Manager:
                     self.memory.completed.append("Repair skipped: tests passed")
                     self.memory.record("repair_skipped", reason="tests_passed")
             elif task.id == "acceptance":
-                # Acceptance is a real gate, not just a placeholder task.
                 ok = self._run_quality_gate()
                 if not ok:
                     message = "Acceptance checks failed"
@@ -162,6 +185,13 @@ class Manager:
             task.status = "failed"
             self.memory.errors.append(f"Task {task.id} failed: {exc}")
             self.memory.record("task_failed", task_id=task.id, error=str(exc))
+            checkpoint = self.checkpoints.latest()
+            if checkpoint is not None and task.id in {"implement", "test"}:
+                try:
+                    restored = self.checkpoints.restore(checkpoint)
+                    self.memory.record("checkpoint_restored", task_id=task.id, path=str(restored))
+                except Exception as restore_exc:
+                    self.memory.errors.append(f"Checkpoint restore failed: {restore_exc}")
             self._save_tasks(tasks)
             self.memory.save(self.memory_path)
             return False
