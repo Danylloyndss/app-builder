@@ -1,6 +1,6 @@
 """Canonical TimePro product blueprint used as the first real App Builder target."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,7 @@ class TimeProBlueprint:
         "company",
         "date",
         "site/client",
+        "location",
         "start",
         "break",
         "end",
@@ -26,6 +27,7 @@ class TimeProBlueprint:
         "digital timesheet",
         "automatic hour total",
         "input validation",
+        "authentication",
         "history",
         "manager dashboard",
         "mobile responsive interface",
