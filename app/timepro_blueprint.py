@@ -11,6 +11,7 @@ class TimeProBlueprint:
         "Daily Timesheet",
         "History",
         "Manager Dashboard",
+        "Dashboard",
     )
     required_fields: tuple[str, ...] = (
         "employee",
@@ -47,16 +48,7 @@ class TimeProBlueprint:
     )
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "name": self.name,
-            "roles": list(self.roles),
-            "screens": list(self.screens),
-            "required_fields": list(self.required_fields),
-            "optional_fields": list(self.optional_fields),
-            "features": list(self.features),
-            "entities": list(self.entities),
-            "acceptance_criteria": list(self.acceptance_criteria),
-        }
+        return {"name": self.name,"roles": list(self.roles),"screens": list(self.screens),"required_fields": list(self.required_fields),"optional_fields": list(self.optional_fields),"features": list(self.features),"entities": list(self.entities),"acceptance_criteria": list(self.acceptance_criteria)}
 
 
 TIMEPRO = TimeProBlueprint()
