@@ -76,6 +76,17 @@ class TimeProService:
                 except OSError: pass
         return deleted
 
+    def delete_attachment(self, attachment_id: int) -> bool:
+        try: aid = int(attachment_id)
+        except (TypeError, ValueError): raise TimeProValidationError("attachment id must be an integer")
+        row = self.db.fetch_one("SELECT stored_path FROM timesheet_attachments WHERE id=?", (aid,))
+        if not row: return False
+        deleted = self.db.execute("DELETE FROM timesheet_attachments WHERE id=?", (aid,)) > 0
+        if deleted:
+            try: Path(row["stored_path"]).unlink(missing_ok=True)
+            except OSError: pass
+        return deleted
+
     def history(self, employee: str | None = None, company: str | None = None, date_from: str | None = None, date_to: str | None = None) -> list[dict]:
         clauses, params = [], []
         if employee: clauses.append("employee LIKE ?"); params.append(f"%{employee}%")
@@ -101,8 +112,12 @@ class TimeProService:
         safe=Path(filename or "attachment").name.replace(" ","_"); ext=Path(safe).suffix.lower()
         allowed={".jpg",".jpeg",".png",".webp",".pdf"}
         if ext not in allowed: raise TimeProValidationError("only JPG, PNG, WEBP or PDF files are allowed")
+        signatures={".jpg":((b"\xff\xd8\xff",),),".jpeg":((b"\xff\xd8\xff",),),".png":((b"\x89PNG\r\n\x1a\n",),),".webp":((b"RIFF",b"WEBP"),),".pdf":((b"%PDF-",),)}
+        if ext in (".jpg",".jpeg",".png",".pdf") and not any(raw.startswith(sig) for sig in signatures[ext][0]): raise TimeProValidationError("file content does not match its extension")
+        if ext==".webp" and not (raw.startswith(b"RIFF") and len(raw)>=12 and raw[8:12]==b"WEBP"): raise TimeProValidationError("file content does not match its extension")
         token=secrets.token_hex(8); stored=self.root/f"{record_id}_{token}{ext}"; stored.write_bytes(raw)
-        self.db.execute("INSERT INTO timesheet_attachments(timesheet_id,filename,stored_path,mime_type) VALUES(?,?,?,?)",(record_id,safe,mime_type or mimetypes.guess_type(safe)[0] or "application/octet-stream",str(stored)))
+        detected=mimetypes.guess_type(safe)[0] or "application/octet-stream"
+        self.db.execute("INSERT INTO timesheet_attachments(timesheet_id,filename,stored_path,mime_type) VALUES(?,?,?,?)",(record_id,safe, str(stored), detected))
         return self.db.fetch_one("SELECT id,filename,mime_type,created_at FROM timesheet_attachments WHERE id=last_insert_rowid()") or {}
 
     def save_signature(self, timesheet_id: int, content_b64: str) -> bool:
