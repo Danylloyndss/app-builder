@@ -1,6 +1,7 @@
 """Testing component for App Builder V1."""
 
 from pathlib import Path
+import json
 
 from .executor import Executor
 
@@ -11,11 +12,22 @@ class Tester:
 
     @staticmethod
     def _is_timepro(workspace: Path) -> bool:
+        spec = workspace / ".app-builder" / "spec.json"
+        if spec.exists():
+            try:
+                data = json.loads(spec.read_text(encoding="utf-8"))
+                if str(data.get("app_name", "")).lower() == "timepro":
+                    return True
+                mission = str(data.get("mission", "")).lower()
+                if any(token in mission for token in ("timepro", "timesheet", "folha de horas")):
+                    return True
+            except (OSError, ValueError, TypeError):
+                pass
         mission = workspace / ".app-builder" / "mission.txt"
-        if not mission.exists():
-            return False
-        text = mission.read_text(encoding="utf-8").lower()
-        return any(token in text for token in ("timepro", "timesheet", "folha de horas"))
+        if mission.exists():
+            text = mission.read_text(encoding="utf-8").lower()
+            return any(token in text for token in ("timepro", "timesheet", "folha de horas"))
+        return False
 
     def _test_timepro(self, workspace: Path) -> tuple[bool, str]:
         index = (workspace / "index.html").read_text(encoding="utf-8")
