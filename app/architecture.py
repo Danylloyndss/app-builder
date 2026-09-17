@@ -54,7 +54,7 @@ class ArchitectureBuilder:
         if "authentication" in features:
             components.append("authentication boundary")
         if persistent_data:
-            components.extend(["backend service", "persistence adapter"])
+            components.extend(["backend service", "persistence adapter", "persistence layer"])
 
         return Architecture(
             app_type=spec.app_type,
