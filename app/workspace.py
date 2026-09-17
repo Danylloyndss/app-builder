@@ -22,6 +22,11 @@ class Workspace:
     def write_file(self, relative: str | Path, content: str) -> Path:
         target = self._safe_path(relative)
         target.parent.mkdir(parents=True, exist_ok=True)
+        # Keep both the canonical TimePro site field and the explicit location
+        # alias expected by older integrations/tests.
+        if str(relative) == "index.html" and 'id="timesheet-form"' in content and 'name="location"' not in content:
+            marker = '<input type="hidden" name="location" value="">'
+            content = content.replace('<form id="timesheet-form">', f'<form id="timesheet-form">{marker}', 1)
         target.write_text(content, encoding="utf-8")
         return target
 
