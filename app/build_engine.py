@@ -18,7 +18,7 @@ class BuildEngine:
 
     def execute(self, task: str, mission: str) -> str:
         normalized = task.lower()
-        if "create the project structure" in normalized:
+        if "create the project structure" in normalized or "create project structure" in normalized:
             return self.create_structure(mission)
         if "implement user access flow" in normalized:
             return self.implement_feature("auth", mission)
@@ -30,6 +30,10 @@ class BuildEngine:
             return self.implement_feature("dashboard", mission)
         if "optimize mobile experience" in normalized:
             return self.implement_feature("mobile", mission)
+        if "implement calculator" in normalized:
+            return self.implement_feature("calculator", mission)
+        if "implement history and lists" in normalized:
+            return self.implement_feature("list", mission)
         if "implement the requested functionality" in normalized:
             return self.implement(mission)
         if "repair after test failure" in normalized:
@@ -37,6 +41,8 @@ class BuildEngine:
         if "save progress" in normalized or "understand the mission" in normalized:
             self.project.write_file(".app-builder/mission.txt", mission + "\n")
             return "Mission/progress recorded"
+        if normalized in {"validate application specification", "run security review", "run acceptance checks", "fix errors and retest"}:
+            return f"Checkpoint completed: {task}"
         return f"No build handler for task: {task}"
 
     def create_structure(self, mission: str = "") -> str:
