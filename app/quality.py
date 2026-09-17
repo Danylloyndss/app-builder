@@ -50,8 +50,22 @@ class QualityGate:
         if not any("secret" in error.lower() for error in errors):
             security.append("No obvious hard-coded secret markers detected")
 
-        mission_path = workspace / ".app-builder" / "mission.txt"
-        mission = mission_path.read_text(encoding="utf-8").lower() if mission_path.exists() else ""
+        # The saved specification is the source of truth. Fall back to the
+        # mission file for older workspaces that predate spec.json.
+        mission = ""
+        spec_path = workspace / ".app-builder" / "spec.json"
+        if spec_path.exists():
+            try:
+                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                mission = str(spec.get("app_name", "")) + " " + str(spec.get("mission", ""))
+            except (json.JSONDecodeError, OSError):
+                mission = ""
+        if not mission:
+            mission_path = workspace / ".app-builder" / "mission.txt"
+            if mission_path.exists():
+                mission = mission_path.read_text(encoding="utf-8")
+        mission = mission.lower()
+
         if any(token in mission for token in ("timepro", "timesheet", "folha de horas")):
             index = (workspace / "index.html").read_text(encoding="utf-8") if (workspace / "index.html").exists() else ""
             script = (workspace / "app.js").read_text(encoding="utf-8") if (workspace / "app.js").exists() else ""
