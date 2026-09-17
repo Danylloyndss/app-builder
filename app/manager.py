@@ -43,16 +43,7 @@ class Manager:
         architecture.save(artifact_dir / "architecture.json")
         tasks = self.tasks.build(spec, architecture)
         self.tasks.save(tasks, artifact_dir / "tasks.json")
-        manifest = {
-            "builder_version": "v1",
-            "app_name": spec.app_name,
-            "app_type": spec.app_type,
-            "platforms": spec.platforms,
-            "mission": mission,
-            "acceptance_criteria": spec.acceptance_criteria,
-            "security_requirements": spec.security_requirements,
-            "task_ids": [task.id for task in tasks],
-        }
+        manifest = {"builder_version":"v1","app_name":spec.app_name,"app_type":spec.app_type,"platforms":spec.platforms,"mission":mission,"acceptance_criteria":spec.acceptance_criteria,"security_requirements":spec.security_requirements,"task_ids":[task.id for task in tasks]}
         (artifact_dir / "build_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
         self.memory.record("specification_created", features=spec.features, screens=spec.screens)
         self.memory.record("architecture_created", components=architecture.components, frontend=architecture.frontend, storage=architecture.storage)
@@ -61,8 +52,7 @@ class Manager:
 
     def _load_tasks(self) -> list[BuildTask]:
         path = self.workspace / ".app-builder" / "tasks.json"
-        if not path.exists():
-            return self._prepare_project(self.memory.mission)
+        if not path.exists(): return self._prepare_project(self.memory.mission)
         return [BuildTask(**item) for item in json.loads(path.read_text(encoding="utf-8"))]
 
     def _save_tasks(self, tasks: list[BuildTask]) -> None:
@@ -73,8 +63,7 @@ class Manager:
         report = self.quality.evaluate(self.workspace, spec.acceptance_criteria)
         report.save(self.workspace / ".app-builder" / "quality_report.json")
         self.memory.record("quality_gate", passed=report.passed, structural_checks=report.structural_checks, security_checks=report.security_checks, acceptance_checks=report.acceptance_checks, errors=report.errors)
-        if not report.passed:
-            self.memory.errors.extend(report.errors)
+        if not report.passed: self.memory.errors.extend(report.errors)
         return report.passed
 
     def _dependencies_complete(self, task: BuildTask, statuses: dict[str, str]) -> bool:
@@ -85,162 +74,69 @@ class Manager:
         return next((task for task in tasks if statuses.get(task.id, task.status) != "completed" and self._dependencies_complete(task, statuses)), None)
 
     def _checkpoint_before_change(self, task: BuildTask) -> None:
-        if task.id in {"structure", "implement", "test", "security", "acceptance"}:
-            try:
-                path = self.checkpoints.create(task.id)
-                self.memory.record("checkpoint_created", task_id=task.id, path=str(path))
-            except FileNotFoundError:
-                pass
+        if task.id in {"structure","implement","test","security","acceptance"}:
+            try: self.memory.record("checkpoint_created", task_id=task.id, path=str(self.checkpoints.create(task.id)))
+            except FileNotFoundError: pass
 
     def _execute_task(self, task: BuildTask, tasks: list[BuildTask]) -> bool:
-        self.memory.current_task = task.title
-        self.memory.status = "running"
-        self.memory.task_statuses[task.id] = "running"
-        task.status = "running"
-        self._save_tasks(tasks)
-        self.memory.record("task_started", task_id=task.id, title=task.title, kind=task.kind)
-        self._checkpoint_before_change(task)
-        self.memory.save(self.memory_path)
-
+        self.memory.current_task = task.title; self.memory.status = "running"; self.memory.task_statuses[task.id] = "running"; task.status = "running"
+        self._save_tasks(tasks); self.memory.record("task_started", task_id=task.id, title=task.title, kind=task.kind); self._checkpoint_before_change(task); self.memory.save(self.memory_path)
         decision = self.policy.decide(task.title)
-        local_timepro_access = task.id == "auth" and self.memory.mission.lower().find("timepro") >= 0
-        needs_approval = (task.requires_approval or decision.requires_approval) and not local_timepro_access
+        lower_mission = self.memory.mission.lower()
+        local_timesheet_access = task.id == "auth" and ("timepro" in lower_mission or "timesheet" in lower_mission or "folha de horas" in lower_mission) and "login" not in lower_mission
+        needs_approval = (task.requires_approval or decision.requires_approval) and not local_timesheet_access
         approved = self.approvals.approved_for(task.title)
         if needs_approval and not approved:
             existing = next((x for x in self.approvals.list_pending() if x["action"] == task.title), None)
             request = existing or self.approvals.create(task.title, "Human approval required before this task can execute.")
-            self.memory.task_statuses[task.id] = "waiting_for_approval"
-            task.status = "waiting_for_approval"
-            self.memory.status = "waiting_for_approval"
-            self.memory.record("approval_requested", request_id=request["id"] if isinstance(request, dict) else request.id, task_id=task.id, task=task.title)
-            self._save_tasks(tasks)
-            self.memory.save(self.memory_path)
-            return False
-
+            self.memory.task_statuses[task.id] = "waiting_for_approval"; task.status = "waiting_for_approval"; self.memory.status = "waiting_for_approval"
+            self.memory.record("approval_requested", request_id=request["id"] if isinstance(request, dict) else request.id, task_id=task.id, task=task.title); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
         if not decision.allowed and not decision.requires_approval:
-            self.memory.task_statuses[task.id] = "blocked"
-            task.status = "blocked"
-            self.memory.status = "blocked"
-            self.memory.errors.append(decision.reason)
-            self.memory.record("action_blocked", task_id=task.id, reason=decision.reason)
-            self._save_tasks(tasks)
-            self.memory.save(self.memory_path)
-            return False
-
+            self.memory.task_statuses[task.id] = "blocked"; task.status = "blocked"; self.memory.status = "blocked"; self.memory.errors.append(decision.reason); self.memory.record("action_blocked", task_id=task.id, reason=decision.reason); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
         try:
             if task.id == "test":
-                ok, message = self.tester.test(self.workspace)
-                attempts = 0
+                ok, message = self.tester.test(self.workspace); attempts = 0
                 while not ok and attempts < self.max_retries:
-                    attempts += 1
-                    self.memory.errors.append(f"Attempt {attempts}: {message}")
-                    self.memory.record("repair", attempt=attempts, error=message)
-                    self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
-                    ok, message = self.tester.test(self.workspace)
+                    attempts += 1; self.memory.errors.append(f"Attempt {attempts}: {message}"); self.memory.record("repair", attempt=attempts, error=message); self.executor.execute("Repair after test failure", self.workspace, self.memory.mission); ok, message = self.tester.test(self.workspace)
                 if not ok:
-                    self.memory.task_statuses[task.id] = "failed"
-                    task.status = "failed"
-                    self.memory.errors.append(message)
-                    self.memory.record("tests_failed", task_id=task.id, message=message)
-                    self._save_tasks(tasks)
-                    self.memory.save(self.memory_path)
-                    return False
-                result = message
-                self.memory.record("tests_passed", task_id=task.id, message=message)
+                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append(message); self.memory.record("tests_failed", task_id=task.id, message=message); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
+                result = message; self.memory.record("tests_passed", task_id=task.id, message=message)
                 repair = next((item for item in tasks if item.id == "repair"), None)
-                if repair is not None and self.memory.task_statuses.get("repair") != "completed":
-                    self.memory.task_statuses["repair"] = "completed"
-                    repair.status = "completed"
-                    self.memory.completed.append("Repair skipped: tests passed")
-                    self.memory.record("repair_skipped", reason="tests_passed")
+                if repair is not None and self.memory.task_statuses.get("repair") != "completed": self.memory.task_statuses["repair"] = "completed"; repair.status = "completed"; self.memory.completed.append("Repair skipped: tests passed"); self.memory.record("repair_skipped", reason="tests_passed")
             elif task.id == "acceptance":
                 if not self._run_quality_gate():
-                    self.memory.task_statuses[task.id] = "failed"
-                    task.status = "failed"
-                    self.memory.errors.append("Acceptance checks failed")
-                    self.memory.record("acceptance_failed", task_id=task.id)
-                    self._save_tasks(tasks)
-                    self.memory.save(self.memory_path)
-                    return False
+                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append("Acceptance checks failed"); self.memory.record("acceptance_failed", task_id=task.id); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = "Acceptance checks passed"
-            else:
-                result = self.executor.execute(task.title, self.workspace, self.memory.mission)
-
-            self.memory.task_statuses[task.id] = "completed"
-            task.status = "completed"
-            self.memory.completed.append(result)
-            if approved:
-                self.approvals.consume(approved["id"])
-                self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
-            if local_timepro_access:
-                self.memory.record("local_access_task", task_id=task.id, approval="not_required_external_action")
-            self.memory.record("task_completed", task_id=task.id, title=task.title, result=result)
-            self._save_tasks(tasks)
-            self.memory.save(self.memory_path)
-            return True
+            else: result = self.executor.execute(task.title, self.workspace, self.memory.mission)
+            self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self.memory.completed.append(result)
+            if approved: self.approvals.consume(approved["id"]); self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
+            if local_timesheet_access: self.memory.record("local_access_task", task_id=task.id, approval="not_required_external_action")
+            self.memory.record("task_completed", task_id=task.id, title=task.title, result=result); self._save_tasks(tasks); self.memory.save(self.memory_path); return True
         except Exception as exc:
-            self.memory.task_statuses[task.id] = "failed"
-            task.status = "failed"
-            self.memory.errors.append(f"Task {task.id} failed: {exc}")
-            self.memory.record("task_failed", task_id=task.id, error=str(exc))
+            self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append(f"Task {task.id} failed: {exc}"); self.memory.record("task_failed", task_id=task.id, error=str(exc))
             checkpoint = self.checkpoints.latest()
-            if checkpoint is not None and task.id in {"implement", "test"}:
-                try:
-                    restored = self.checkpoints.restore(checkpoint)
-                    self.memory.record("checkpoint_restored", task_id=task.id, path=str(restored))
-                except Exception as restore_exc:
-                    self.memory.errors.append(f"Checkpoint restore failed: {restore_exc}")
-            self._save_tasks(tasks)
-            self.memory.save(self.memory_path)
-            return False
+            if checkpoint is not None and task.id in {"implement","test"}:
+                try: self.memory.record("checkpoint_restored", task_id=task.id, path=str(self.checkpoints.restore(checkpoint)))
+                except Exception as restore_exc: self.memory.errors.append(f"Checkpoint restore failed: {restore_exc}")
+            self._save_tasks(tasks); self.memory.save(self.memory_path); return False
 
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
         if not resume or self.memory.mission != mission:
-            self.memory = ProjectMemory(mission=mission, status="planning")
-            tasks = self._prepare_project(mission)
-            self.memory.plan = [task.title for task in tasks]
-            self.memory.record("plan_created", tasks=self.memory.plan, execution="dependency_graph")
-            self.memory.task_statuses = {task.id: "pending" for task in tasks}
-            self.memory.save(self.memory_path)
+            self.memory = ProjectMemory(mission=mission, status="planning"); tasks = self._prepare_project(mission); self.memory.plan = [task.title for task in tasks]; self.memory.record("plan_created", tasks=self.memory.plan, execution="dependency_graph"); self.memory.task_statuses = {task.id:"pending" for task in tasks}; self.memory.save(self.memory_path)
         else:
-            tasks = self._load_tasks()
-            self.memory.record("mission_resumed", current_task=self.memory.current_task)
+            tasks = self._load_tasks(); self.memory.record("mission_resumed", current_task=self.memory.current_task)
             for task in tasks:
-                if self.memory.task_statuses.get(task.id) == "waiting_for_approval" and self.approvals.approved_for(task.title):
-                    self.memory.task_statuses[task.id] = "pending"
-                    task.status = "pending"
-            self._save_tasks(tasks)
-            self.memory.save(self.memory_path)
-
+                if self.memory.task_statuses.get(task.id) == "waiting_for_approval" and self.approvals.approved_for(task.title): self.memory.task_statuses[task.id] = "pending"; task.status = "pending"
+            self._save_tasks(tasks); self.memory.save(self.memory_path)
         while True:
             task = self._find_next_task(tasks)
             if task is None:
-                waiting = [t for t in tasks if self.memory.task_statuses.get(t.id) == "waiting_for_approval"]
-                failed = [t for t in tasks if self.memory.task_statuses.get(t.id) == "failed"]
-                if waiting:
-                    self.memory.status = "waiting_for_approval"
-                    self.memory.current_task = waiting[0].title
-                    self.memory.save(self.memory_path)
-                    return self.memory
-                if failed:
-                    self.memory.status = "completed_with_errors"
-                    self.memory.current_task = failed[0].title
-                    self.memory.save(self.memory_path)
-                    return self.memory
+                waiting = [t for t in tasks if self.memory.task_statuses.get(t.id)=="waiting_for_approval"]; failed = [t for t in tasks if self.memory.task_statuses.get(t.id)=="failed"]
+                if waiting: self.memory.status="waiting_for_approval"; self.memory.current_task=waiting[0].title; self.memory.save(self.memory_path); return self.memory
+                if failed: self.memory.status="completed_with_errors"; self.memory.current_task=failed[0].title; self.memory.save(self.memory_path); return self.memory
                 break
-            if not self._execute_task(task, tasks):
-                if self.memory.status in {"waiting_for_approval", "blocked"} or self.memory.task_statuses.get(task.id) == "failed":
-                    if self.memory.task_statuses.get(task.id) == "failed":
-                        self.memory.status = "completed_with_errors"
-                    self.memory.save(self.memory_path)
-                    return self.memory
-
-        self.memory.status = "quality_review"
-        self.memory.current_task = ""
-        self.memory.save(self.memory_path)
-        quality_ok = self._run_quality_gate()
-        self.memory.current_task = ""
-        self.memory.status = "completed" if quality_ok and not self.memory.errors else "completed_with_errors"
-        self.memory.record("mission_finished", status=self.memory.status)
-        self.memory.save(self.memory_path)
-        return self.memory
+            if not self._execute_task(task,tasks):
+                if self.memory.status in {"waiting_for_approval","blocked"} or self.memory.task_statuses.get(task.id)=="failed":
+                    if self.memory.task_statuses.get(task.id)=="failed": self.memory.status="completed_with_errors"
+                    self.memory.save(self.memory_path); return self.memory
+        self.memory.status="quality_review"; self.memory.current_task=""; self.memory.save(self.memory_path); quality_ok=self._run_quality_gate(); self.memory.current_task=""; self.memory.status="completed" if quality_ok and not self.memory.errors else "completed_with_errors"; self.memory.record("mission_finished", status=self.memory.status); self.memory.save(self.memory_path); return self.memory
