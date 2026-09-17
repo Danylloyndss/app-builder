@@ -77,7 +77,9 @@ class CodingAgent:
                 ok, message = validator(self.project)
                 observations.append(message)
                 if ok:
-                    return AgentResult(True, iteration, actions, errors)
+                    # A successful write is confirmed by a clean observe/validate
+                    # pass on the next iteration, making the loop auditable.
+                    continue
                 errors.append(message)
             except Exception as exc:
                 errors.append(str(exc))
