@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 import json
 from pathlib import Path
 
+from .timepro_blueprint import TIMEPRO
+
 
 @dataclass
 class AppSpecification:
@@ -31,6 +33,35 @@ class SpecificationBuilder:
     def build(self, mission: str) -> AppSpecification:
         text = mission.strip()
         lower = text.lower()
+
+        # TimePro is the first production target of the autonomous builder.
+        # Keep its contract deterministic so later planning/build/test stages
+        # operate from one canonical product definition.
+        if "timepro" in lower or "folha de horas" in lower or "timesheet" in lower:
+            return AppSpecification(
+                mission=text,
+                app_name=TIMEPRO.name,
+                app_type="web",
+                platforms=["web", "mobile-web"],
+                users=list(TIMEPRO.roles),
+                screens=list(TIMEPRO.screens),
+                features=list(TIMEPRO.features),
+                data_entities=list(TIMEPRO.entities),
+                business_rules=[
+                    "Total = end - start - break",
+                    "End time must be greater than or equal to start time",
+                    "Break must be zero or positive",
+                    "Optional fields must never block submission",
+                ],
+                security_requirements=[
+                    "Never expose secrets in generated source code",
+                    "Validate user-controlled input",
+                    "Keep employee and manager permissions distinct",
+                    "Require human approval before external authentication, payment, messaging or production release",
+                ],
+                acceptance_criteria=list(TIMEPRO.acceptance_criteria),
+            )
+
         features: list[str] = []
         screens = ["Main"]
         users = ["User"]
@@ -39,7 +70,7 @@ class SpecificationBuilder:
         rules = {
             "authentication": ("login", "sign in", "account", "senha", "connexion"),
             "data storage": ("database", "data", "dados", "save", "store", "persist"),
-            "forms": ("form", "field", "formulário", "cadastro", "timesheet", "folha de horas"),
+            "forms": ("form", "field", "formulário", "cadastro"),
             "dashboard": ("dashboard", "admin", "manager", "gestor", "painel"),
             "mobile": ("mobile", "phone", "celular", "smartphone", "responsive"),
             "calculation": ("calculator", "calculate", "total", "calcular", "hours", "horas"),
