@@ -32,6 +32,19 @@ class Handler(BaseHTTPRequestHandler):
         supplied = self.headers.get("X-App-Builder-Key", "")
         return bool(supplied) and hmac.compare_digest(supplied, configured)
 
+    def _status_payload(self, memory) -> dict:
+        return {
+            "mission": memory.mission,
+            "status": memory.status,
+            "current_task": memory.current_task,
+            "plan": memory.plan,
+            "completed": memory.completed,
+            "errors": memory.errors,
+            "task_statuses": memory.task_statuses,
+            "history": memory.history[-20:],
+            "approvals": APPROVALS.list_pending(),
+        }
+
     def do_GET(self) -> None:
         if self.path == "/health":
             self._send(200, {"status": "ok", "service": "app-builder-agent"})
@@ -45,11 +58,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if self.path == "/status":
-            memory = Manager(workspace=WORKSPACE).memory
-            self._send(200, {"mission": memory.mission, "status": memory.status,
-                "current_task": memory.current_task, "plan": memory.plan,
-                "completed": memory.completed, "errors": memory.errors,
-                "history": memory.history[-20:], "approvals": APPROVALS.list_pending()})
+            self._send(200, self._status_payload(Manager(workspace=WORKSPACE).memory))
             return
         if self.path == "/approvals":
             self._send(200, {"approvals": APPROVALS.list_pending()})
@@ -72,9 +81,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, {"error": "mission is required and must be <= 20000 characters"})
                     return
                 memory = Manager(workspace=WORKSPACE).run(mission, resume=self.path == "/resume")
-                self._send(200, {"mission": memory.mission, "status": memory.status,
-                    "current_task": memory.current_task, "plan": memory.plan,
-                    "completed": memory.completed, "errors": memory.errors})
+                self._send(200, self._status_payload(memory))
                 return
             if self.path == "/approval":
                 action = str(data.get("action", "")).strip()
@@ -93,6 +100,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {"approval": result})
                 return
             self._send(404, {"error": "not found"})
+        except (ValueError, TypeError):
+            self._send(400, {"error": "invalid request"})
         except json.JSONDecodeError:
             self._send(400, {"error": "invalid JSON"})
         except Exception as exc:
