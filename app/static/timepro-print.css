@@ -1,0 +1,1 @@
+@media print{body{background:white}main{max-width:none;padding:0}.card{box-shadow:none;border:0;border-radius:0}.card:first-of-type,.toolbar,header strong,#sigModal{display:none!important}.entry{grid-template-columns:80px 1fr 1.4fr 90px auto}.actions{display:none!important}h2{margin-bottom:12px}button{display:none!important}}
