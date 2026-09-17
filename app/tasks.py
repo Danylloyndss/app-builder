@@ -46,7 +46,11 @@ class TaskBuilder:
         }
         for task_id, title, kind, risk in feature_map:
             if feature_to_spec[task_id] in features:
-                tasks.append(BuildTask(task_id, title, kind, [previous], risk, task_id == "auth",
+                # TimePro V1 uses a local role/access surface; no external account
+                # action occurs during the autonomous build. External auth still
+                # remains approval-gated by ActionPolicy and future adapters.
+                needs_approval = task_id == "auth" and spec.app_name != "TimePro"
+                tasks.append(BuildTask(task_id, title, kind, [previous], risk, needs_approval,
                     [f"{title} is represented in the generated project"]))
                 previous = task_id
 
