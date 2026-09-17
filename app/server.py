@@ -16,6 +16,7 @@ from .timepro_api import TimeProService, TimeProValidationError
 WORKSPACE = "workspace"
 ROOT = Path(__file__).resolve().parent
 INDEX = ROOT / "static" / "index.html"
+TIMEPRO_INDEX = ROOT / "static" / "timepro.html"
 APPROVALS = ApprovalStore(f"{WORKSPACE}/approvals.json")
 RUN_LOCK = threading.Lock()
 TIMEPRO = TimeProService()
@@ -26,6 +27,15 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_html(self, path: Path) -> None:
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -55,7 +65,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/health": self._send(200, {"status": "ok", "service": "app-builder-agent"}); return
         if self.path in ("/", "/index.html"):
-            body = INDEX.read_bytes(); self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); return
+            self._send_html(INDEX); return
+        if self.path in ("/timepro", "/timepro/"):
+            self._send_html(TIMEPRO_INDEX); return
         if self.path == "/status": self._send(200, self._status_payload(Manager(workspace=WORKSPACE).memory)); return
         if self.path == "/approvals": self._send(200, {"approvals": APPROVALS.list_pending()}); return
         if self.path == "/artifacts": self._send(200, {"files": self._artifact_files()}); return
