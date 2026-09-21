@@ -123,6 +123,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/timepro-sw.js": self._send_sw(); return
         if self.path=="/status": self._send(200,self._status_payload(Manager(workspace=WORKSPACE).memory)); return
         if self.path=="/approvals": self._send(200,{"approvals":APPROVALS.list_pending()}); return
+        if self.path=="/jobs": self._send(200,{"jobs":_load_jobs()}); return
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
@@ -147,6 +148,16 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=="/api/timepro/timesheets": self._send(201,{"timesheet":TIMEPRO.create_timesheet(data)}); return
             if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64", ""))}); return
             if parsed.path=="/api/timepro/signature": TIMEPRO.save_signature(data.get("timesheet_id"),data.get("content_base64","")); self._send(201,{"saved":True}); return
+            if parsed.path=="/jobs/retry":
+                job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
+                if not job: self._send(404,{"error":"job not found"}); return
+                if job.get("status") not in ("failed","completed"): self._send(409,{"error":"job is not retryable"}); return
+                job["status"]="pending"; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; _save_jobs(jobs); _start_job_worker(); self._send(202,{"status":"queued","job":job}); return
+            if parsed.path=="/jobs/cancel":
+                job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
+                if not job: self._send(404,{"error":"job not found"}); return
+                if job.get("status")!="pending": self._send(409,{"error":"only pending jobs can be cancelled"}); return
+                job["status"]="cancelled"; job["finished_at"]=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(); _save_jobs(jobs); self._send(200,{"job":job}); return
             if parsed.path in ("/run/background","/resume/background"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
