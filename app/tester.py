@@ -4,11 +4,13 @@ from pathlib import Path
 import json
 
 from .executor import Executor
+from .project_validator import ProjectValidator
 
 
 class Tester:
     def __init__(self) -> None:
         self.executor = Executor()
+        self.validator = ProjectValidator()
 
     @staticmethod
     def _is_timepro(workspace: Path) -> bool:
@@ -49,10 +51,9 @@ class Tester:
         return True, "TimePro functional MVP passed structural and behavior checks"
 
     def test(self, workspace: Path, cancel_check=None) -> tuple[bool, str]:
-        required = ("index.html", "app.js", "README.md")
-        missing = [name for name in required if not (workspace / name).exists()]
-        if missing:
-            return False, f"Generated project is missing: {', '.join(missing)}"
+        valid, validation_errors = self.validator.validate(workspace)
+        if not valid:
+            return False, "Generated project contract failed: " + "; ".join(validation_errors)
 
         index = (workspace / "index.html").read_text(encoding="utf-8")
         script = (workspace / "app.js").read_text(encoding="utf-8")
