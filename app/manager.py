@@ -178,11 +178,46 @@ class Manager:
                 except Exception as restore_exc: self.memory.errors.append(f"Checkpoint restore failed: {restore_exc}")
             self._save_tasks(tasks); self.memory.save(self.memory_path); return False
 
+    def _validate_build_integrity(self, tasks: list[BuildTask]) -> bool:
+        """Detect external artifact changes before resuming a durable mission."""
+        report_path = self.workspace / ".app-builder" / "build_report.json"
+        if not report_path.exists():
+            return True
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            expected = report.get("artifacts") or {}
+        except (OSError, ValueError, TypeError):
+            return False
+        mismatches = []
+        for relative, digest in expected.items():
+            path = self.workspace / relative
+            if not path.is_file():
+                mismatches.append(relative)
+                continue
+            try:
+                actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                mismatches.append(relative)
+                continue
+            if actual != digest:
+                mismatches.append(relative)
+        if not mismatches:
+            return True
+        self.memory.diagnostics["artifact_integrity"] = "changed"
+        self.memory.diagnostics["artifact_integrity_mismatches"] = mismatches[:50]
+        self.memory.record("artifact_integrity_failed", mismatches=mismatches[:50])
+        for task in tasks:
+            if task.kind in {"build", "authentication", "storage", "ui", "logic", "test", "repair", "security", "acceptance"}:
+                task.status = "pending"
+                self.memory.task_statuses[task.id] = "pending"
+        return False
+
     def run(self, mission: str, resume: bool = False) -> ProjectMemory:
         if not resume or self.memory.mission != mission:
             self.memory = ProjectMemory(mission=mission, status="planning"); tasks = self._prepare_project(mission); self.memory.plan = [task.title for task in tasks]; self.memory.record("plan_created", tasks=self.memory.plan, execution="dependency_graph"); self.memory.task_statuses = {task.id:"pending" for task in tasks}; self.memory.save(self.memory_path)
         else:
             tasks = self._load_tasks(); self.memory.record("mission_resumed", current_task=self.memory.current_task)
+            self._validate_build_integrity(tasks)
             for task in tasks:
                 if self.memory.task_statuses.get(task.id) == "waiting_for_approval" and self.approvals.approved_for(task.title): self.memory.task_statuses[task.id] = "pending"; task.status = "pending"
             self._save_tasks(tasks); self.memory.save(self.memory_path)
