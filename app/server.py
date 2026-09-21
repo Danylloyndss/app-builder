@@ -231,15 +231,23 @@ class Handler(BaseHTTPRequestHandler):
                 approval_id=str(data.get("id",""))
                 result=APPROVALS.decide(approval_id,bool(data.get("approved",False)))
                 if result is None: self._send(404,{"error":"approval not found"}); return
-                if result.get("status")=="approved":
-                    jobs=_load_jobs()
-                    resumed=False
-                    for job in jobs:
-                        if job.get("status")=="waiting_for_approval" and job.get("approval_id")==approval_id:
+                resumed=False
+                rejected=False
+                jobs=_load_jobs()
+                now=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+                for job in jobs:
+                    if job.get("status")=="waiting_for_approval" and job.get("approval_id")==approval_id:
+                        if result.get("status")=="approved":
                             job["status"]="pending"; job["resume"]=True; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; resumed=True
-                    if resumed:
-                        _save_jobs(jobs); _start_job_worker()
-                self._send(200,{"approval":result,"resumed":resumed}); return
+                        else:
+                            job["status"]="failed"; job["error"]="Human approval rejected"; job["finished_at"]=now; rejected=True
+                if resumed or rejected:
+                    _save_jobs(jobs)
+                    if resumed: _start_job_worker()
+                    for job in jobs:
+                        if job.get("approval_id")==approval_id and job.get("status")=="failed":
+                            _job_event(job,"approval_rejected","Human approval rejected the requested action")
+                self._send(200,{"approval":result,"resumed":resumed,"rejected":rejected}); return
             self._send(404,{"error":"not found"})
         except json.JSONDecodeError: self._send(400,{"error":"invalid JSON"})
         except TimeProValidationError as exc: self._send(422,{"error":str(exc)})
