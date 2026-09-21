@@ -44,3 +44,6 @@ class ProjectMemory:
             })
         elif event in {"tests_passed", "mission_finished"}:
             self.diagnostics["last_success"] = event
+        elif event == "task_started":
+            self.diagnostics["active_task_id"] = details.get("task_id", "")
+            self.diagnostics["active_task"] = details.get("title", self.current_task)
