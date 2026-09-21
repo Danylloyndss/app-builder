@@ -99,3 +99,5 @@ class Workspace:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
+            if process.stdout is not None and not process.stdout.closed:
+                process.stdout.close()
