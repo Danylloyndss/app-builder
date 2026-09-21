@@ -122,6 +122,12 @@ class Handler(BaseHTTPRequestHandler):
         parsed=urlparse(self.path)
         if parsed.path=="/api/timepro/export.csv": self._send_csv(); return\n        if parsed.path=="/api/timepro/export.pdf": self._send_pdf(); return
         if parsed.path=="/api/timepro/attachments": self._send_attachment(); return
+        if parsed.path=="/api/timepro/timesheet":
+            record_id=self._timepro_id()
+            if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
+            row=TIMEPRO.get_timesheet(record_id)
+            if not row: self._send(404,{"error":"timesheet not found"}); return
+            self._send(200,{"timesheet":row}); return
         if parsed.path=="/api/timepro/history":
             employee,company,date_from,date_to=self._filters(); self._send(200,{"timesheets":TIMEPRO.history(employee,company,date_from,date_to)}); return
         if parsed.path=="/api/timepro/dashboard":
