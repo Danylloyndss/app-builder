@@ -108,13 +108,15 @@ class Manager:
             except FileNotFoundError: pass
 
     def _execute_task(self, task: BuildTask, tasks: list[BuildTask]) -> bool:
+        was_waiting_for_approval = task.status == "waiting_for_approval" or self.memory.task_statuses.get(task.id) == "waiting_for_approval"
+        linked_approval_id = self.memory.diagnostics.get("approval_id") if self.memory.diagnostics.get("approval_task_id") == task.id else None
         self.memory.current_task = task.title; self.memory.status = "running"; self._progress("running"); self.memory.task_statuses[task.id] = "running"; task.status = "running"
         self._save_tasks(tasks); self.memory.record("task_started", task_id=task.id, title=task.title, kind=task.kind); self._checkpoint_before_change(task); self.memory.save(self.memory_path)
         decision = self.policy.decide(task.title)
         lower_mission = self.memory.mission.lower()
         local_timesheet_access = task.id == "auth" and ("timepro" in lower_mission or "timesheet" in lower_mission or "folha de horas" in lower_mission) and "login" not in lower_mission
         needs_approval = (task.requires_approval or decision.requires_approval) and not local_timesheet_access
-        approval_id = self.memory.diagnostics.get("approval_id") if task.status == "waiting_for_approval" else None
+        approval_id = linked_approval_id if was_waiting_for_approval else None
         approved = self.approvals.approved_for(task.title, approval_id)
         if needs_approval and not approved:
             existing = next((x for x in self.approvals.list_pending() if x["action"] == task.title), None)
