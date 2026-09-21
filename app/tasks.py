@@ -46,7 +46,8 @@ class TaskBuilder:
         }
         for task_id, title, kind, risk in feature_map:
             if feature_to_spec[task_id] in features:
-                tasks.append(BuildTask(task_id, title, kind, [previous], risk, task_id == "auth",
+                requires_approval = task_id == "auth" and not any(token in spec.mission.lower() for token in ("timepro", "timesheet", "folha de horas"))
+                tasks.append(BuildTask(task_id, title, kind, [previous], risk, requires_approval,
                     [f"{title} is represented in the generated project"]))
                 previous = task_id
 
