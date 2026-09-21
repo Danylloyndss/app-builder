@@ -138,7 +138,23 @@ class Handler(BaseHTTPRequestHandler):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
     def _start_background(self, mission, resume=False):
         job=_enqueue_job(mission,resume); _start_job_worker(); return job
-    def _status_payload(self,memory): return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"approvals":APPROVALS.list_pending(),"jobs":_load_jobs()[-20:]}
+    def _status_payload(self,memory):
+        from datetime import datetime,timezone
+        jobs=_load_jobs()
+        now=datetime.now(timezone.utc)
+        enriched=[]
+        for job in jobs[-20:]:
+            item=dict(job)
+            heartbeat=item.get("last_heartbeat_at")
+            if heartbeat:
+                try: item["heartbeat_age_seconds"]=max(0,int((now-datetime.fromisoformat(heartbeat)).total_seconds()))
+                except (TypeError,ValueError): item["heartbeat_age_seconds"]=None
+            else: item["heartbeat_age_seconds"]=None
+            events=item.get("events") or []
+            item["last_event"]=events[-1] if events else None
+            item["phase"]="approval" if item.get("status")=="waiting_for_approval" else ("stopped" if item.get("status") in {"failed","cancelled","completed"} else "building")
+            enriched.append(item)
+        return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"diagnostics":dict(memory.diagnostics),"approvals":APPROVALS.list_pending(),"jobs":enriched}
     def _artifact_files(self):
         root=Path(WORKSPACE); return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts) if root.exists() else []
     def _artifact_zip(self):
