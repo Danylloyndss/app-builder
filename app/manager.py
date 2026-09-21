@@ -180,4 +180,25 @@ class Manager:
                 if self.memory.status in {"waiting_for_approval","blocked"} or self.memory.task_statuses.get(task.id)=="failed":
                     if self.memory.task_statuses.get(task.id)=="failed": self.memory.status="completed_with_errors"
                     self.memory.save(self.memory_path); return self.memory
-        self.memory.status="quality_review"; self.memory.current_task=""; self.memory.save(self.memory_path); quality_ok=self._run_quality_gate(); self.memory.current_task=""; self.memory.status="completed" if quality_ok and not self.memory.errors else "completed_with_errors"; self.memory.record("mission_finished", status=self.memory.status); self.memory.save(self.memory_path); return self.memory
+        # Final verification is allowed to repair once more even if the acceptance task
+        # already passed. This closes the gap where later tasks can invalidate a
+        # previously-good artifact without forcing a human to restart the mission.
+        self.memory.status="quality_review"; self.memory.current_task="Final quality verification"; self.memory.save(self.memory_path)
+        quality_ok=self._run_quality_gate()
+        final_attempts=0
+        while not quality_ok and final_attempts < self.max_retries:
+            self._check_cancelled()
+            final_attempts += 1
+            report_path = self.workspace / ".app-builder" / "quality_report.json"
+            report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else "quality gate failed"
+            self.memory.errors.append(f"Final quality repair attempt {final_attempts}: {report_text[-1500:]}")
+            self.memory.record("final_quality_repair", attempt=final_attempts, report=report_text[-1500:])
+            self.memory.current_task = "Final quality repair"
+            self._progress("running")
+            self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
+            quality_ok = self._run_quality_gate()
+        self.memory.current_task=""
+        self.memory.status="completed" if quality_ok and not self.memory.errors else "completed_with_errors"
+        self.memory.record("mission_finished", status=self.memory.status, final_quality_repairs=final_attempts)
+        self.memory.save(self.memory_path)
+        return self.memory
