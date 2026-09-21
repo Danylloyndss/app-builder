@@ -157,7 +157,10 @@ class Manager:
             else:
                 result = self.executor.execute(task.title, self.workspace, self.memory.mission)
                 self._check_cancelled()
-            self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running"); self.memory.completed.append(result)
+            self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running")
+            self.memory.diagnostics["last_completed_task_id"] = task.id
+            self.memory.diagnostics["last_completed_task"] = task.title
+            self.memory.completed.append(result)
             if approved: self.approvals.consume(approved["id"]); self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
             if local_timesheet_access: self.memory.record("local_access_task", task_id=task.id, approval="not_required_external_action")
             self.memory.record("task_completed", task_id=task.id, title=task.title, result=result); self._save_tasks(tasks); self.memory.save(self.memory_path); return True
