@@ -48,7 +48,7 @@ class Tester:
             return False, f"TimePro logic missing required behavior: {', '.join(missing_js)}"
         return True, "TimePro functional MVP passed structural and behavior checks"
 
-    def test(self, workspace: Path) -> tuple[bool, str]:
+    def test(self, workspace: Path, cancel_check=None) -> tuple[bool, str]:
         required = ("index.html", "app.js", "README.md")
         missing = [name for name in required if not (workspace / name).exists()]
         if missing:
@@ -61,7 +61,7 @@ class Tester:
 
         # Catch JavaScript syntax errors before calling the build successful.
         # Node is optional; when unavailable, keep the deterministic checks below.
-        node = self.executor.run_command(["node", "--check", "app.js"], workspace)
+        node = self.executor.run_command(["node", "--check", "app.js"], workspace, cancel_check=cancel_check)
         if node[0] == 0:
             syntax_ok = True
         elif "not found" in node[1].lower() or "no such file" in node[1].lower():
@@ -79,6 +79,7 @@ class Tester:
             code, output = self.executor.run_command(
                 ["python", "-m", "unittest", "discover", "-s", "tests", "-v"],
                 workspace,
+                cancel_check=cancel_check,
             )
             if code != 0:
                 return False, f"Project tests failed: {output[-2000:]}"
