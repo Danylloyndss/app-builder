@@ -41,7 +41,7 @@ class Tester:
         if missing_html:
             return False, f"TimePro HTML missing required elements: {', '.join(missing_html)}"
         required_js = (
-            "localStorage", "b < a", "Feuille envoyée avec succès", "function duration",
+            "localStorage", "JSON.parse", "Array.isArray", "try", "b < a", "Feuille envoyée avec succès", "function duration",
         )
         missing_js = [marker for marker in required_js if marker not in script]
         if missing_js:
