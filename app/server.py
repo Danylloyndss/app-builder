@@ -215,7 +215,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
         parsed=urlparse(self.path)
-        if parsed.path=="/api/timepro/export.csv": self._send_csv(); return\n        if parsed.path=="/api/timepro/export.pdf": self._send_pdf(); return
+        if parsed.path=="/api/timepro/export.csv": self._send_csv(); return
+        if parsed.path=="/api/timepro/export.pdf": self._send_pdf(); return
         if parsed.path=="/api/timepro/attachments": self._send_attachment(); return
         if parsed.path=="/api/timepro/signature":
             record_id=self._timepro_id()
