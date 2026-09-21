@@ -4,7 +4,7 @@ import csv, hmac, io, json, os, threading, zipfile, unicodedata
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from .approvals import ApprovalStore
-from .manager import Manager
+from .manager import JobCancelled, Manager
 from .timepro_api import TimeProService, TimeProValidationError
 WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; TIMEPRO_SW=ROOT/"static"/"timepro-sw.js"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
 
@@ -22,7 +22,15 @@ def _save_jobs(jobs):
 
 def _enqueue_job(mission,resume=False):
     from datetime import datetime,timezone
-    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":""}; jobs.append(job); _save_jobs(jobs); return job
+    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":"","completed_count":0,"error_count":0,"cancel_requested":False,"events":[]}; jobs.append(job); _save_jobs(jobs); return job
+
+def _job_event(job, event, detail=""):
+    jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job.get("id")),None)
+    if not current: return
+    events=current.setdefault("events",[])
+    events.append({"event":event,"detail":detail})
+    current["events"]=events[-100:]
+    _save_jobs(jobs)
 
 def _run_pending_jobs():
     if not RUN_LOCK.acquire(blocking=False): return
@@ -32,15 +40,24 @@ def _run_pending_jobs():
         changed=False
         for stale in jobs:
             if stale.get("status")=="running":
-                stale["status"]="pending"; stale["error"]="Recovered after worker restart"; stale["started_at"]=None; changed=True
+                if stale.get("cancel_requested"):
+                    stale["status"]="cancelled"; stale["error"]="Cancelled during worker restart"; stale["finished_at"]=datetime.now(timezone.utc).isoformat()
+                else:
+                    stale["status"]="pending"; stale["error"]="Recovered after worker restart"; stale["started_at"]=None
+                changed=True
         if changed: _save_jobs(jobs)
         while True:
             jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
             if not job:
                 return
-            job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; _save_jobs(jobs)
+            job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; job["error"]=""; _save_jobs(jobs)
+            _job_event(job,"started",job.get("mission","")[:160])
             try:
                 def progress(memory, state):
+                    jobs_check=_load_jobs()
+                    check=next((j for j in jobs_check if j.get("id")==job["id"]),None)
+                    if check and check.get("cancel_requested"):
+                        raise JobCancelled("Background job cancellation requested")
                     jobs_now=_load_jobs()
                     current_now=next((j for j in jobs_now if j.get("id")==job["id"]),None)
                     if current_now:
@@ -48,11 +65,16 @@ def _run_pending_jobs():
                         current_now["result_status"]=state
                         current_now["completed_count"]=len(memory.completed)
                         current_now["error_count"]=len(memory.errors)
-                        _save_jobs(jobs_now)
+                        _job_event(current_now,"progress",f"{state}: {memory.current_task}" if memory.current_task else str(state))
                 memory=Manager(workspace=WORKSPACE, progress_callback=progress).run(job["mission"],resume=bool(job.get("resume")))
-                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="completed"; current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="completed" if memory.status != "cancelled" else "cancelled"; current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+                _job_event(current,"finished",memory.status)
+            except JobCancelled as exc:
+                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="cancelled"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+                _job_event(current,"cancelled",str(exc))
             except Exception as exc:
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="failed"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+                _job_event(current,"failed",str(exc))
     finally: RUN_LOCK.release()
 
 def _start_job_worker(): threading.Thread(target=_run_pending_jobs,name="app-builder-job-worker",daemon=True).start()
@@ -133,6 +155,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/status": self._send(200,self._status_payload(Manager(workspace=WORKSPACE).memory)); return
         if self.path=="/approvals": self._send(200,{"approvals":APPROVALS.list_pending()}); return
         if self.path=="/jobs": self._send(200,{"jobs":_load_jobs()}); return
+        if self.path.startswith("/jobs/") and self.path.count("/") == 2:
+            job_id=self.path.split("/",2)[2]; job=next((j for j in _load_jobs() if j.get("id")==job_id),None)
+            if not job: self._send(404,{"error":"job not found"}); return
+            self._send(200,{"job":job}); return
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
@@ -173,8 +199,13 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=="/jobs/cancel":
                 job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
                 if not job: self._send(404,{"error":"job not found"}); return
-                if job.get("status")!="pending": self._send(409,{"error":"only pending jobs can be cancelled"}); return
-                job["status"]="cancelled"; job["finished_at"]=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(); _save_jobs(jobs); self._send(200,{"job":job}); return
+                if job.get("status")=="pending":
+                    job["status"]="cancelled"; job["finished_at"]=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+                elif job.get("status")=="running":
+                    job["cancel_requested"]=True
+                else:
+                    self._send(409,{"error":"job is not running or pending"}); return
+                _save_jobs(jobs); _job_event(job,"cancel_requested","User requested cancellation"); self._send(202,{"status":"cancellation_requested" if job.get("status")=="running" else "cancelled","job":job}); return
             if parsed.path in ("/run/background","/resume/background"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
