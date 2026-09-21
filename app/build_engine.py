@@ -647,11 +647,30 @@ Les données sont stockées dans `localStorage`. L’authentification, une vraie
             ]
         if "storage" in features:
             blocks += [
-                "  document.querySelectorAll('form[data-save]').forEach(form => form.addEventListener('submit', event => {",
+                "  const apiBase = window.APP_API_BASE || '';",
+                "  const api = async (path, options = {}) => {",
+                "    const response = await fetch(apiBase + path, {headers: {'Content-Type': 'application/json'}, ...options});",
+                "    if (!response.ok) throw new Error('API request failed');",
+                "    return response.json();",
+                "  };",
+                "  const renderRecords = records => {",
+                "    const list = document.querySelector('#history-list');",
+                "    if (!list) return;",
+                "    list.innerHTML = '';",
+                "    (records || []).forEach(record => { const item = document.createElement('li'); item.textContent = JSON.stringify(record); list.appendChild(item); });",
+                "  };",
+                "  const loadRecords = async () => {",
+                "    try { renderRecords(await api('/api/records')); } catch (_) {",
+                "      const cached = JSON.parse(localStorage.getItem('app-builder-records') || '[]'); renderRecords(cached);",
+                "    }",
+                "  };",
+                "  document.querySelectorAll('form[data-save]').forEach(form => form.addEventListener('submit', async event => {",
                 "    event.preventDefault();",
-                "    localStorage.setItem('app-builder-form', JSON.stringify(Object.fromEntries(new FormData(form))));",
-                "    if (status) status.textContent = 'Saved locally';",
+                "    const payload = Object.fromEntries(new FormData(form));",
+                "    try { await api('/api/records', {method: 'POST', body: JSON.stringify(payload)}); await loadRecords(); if (status) status.textContent = 'Saved to server'; }",
+                "    catch (_) { const cached = JSON.parse(localStorage.getItem('app-builder-records') || '[]'); cached.push(payload); localStorage.setItem('app-builder-records', JSON.stringify(cached)); renderRecords(cached); if (status) status.textContent = 'Server unavailable — saved locally'; }",
                 "  }));",
+                "  loadRecords();",
             ]
         if "auth" in features:
             blocks += [
@@ -682,7 +701,7 @@ Les données sont stockées dans `localStorage`. L’authentification, une vraie
         if "calculator" in features:
             sections.append('<section><h2>Total</h2><strong id="total">0h 0min</strong></section>')
         if "list" in features:
-            sections.append('<section><h2>History</h2><ul><li>No records yet</li></ul></section>')
+            sections.append('<section><h2>History</h2><ul id="history-list"><li>No records yet</li></ul></section>')
         if "dashboard" in features:
             sections.append('<section><h2>Dashboard</h2><div class="cards"><article>Employees</article><article>Hours</article><article>Pending</article></div></section>')
         sections.append('<p data-builder-status>Building...</p>')
