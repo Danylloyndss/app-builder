@@ -237,6 +237,13 @@ if __name__ == "__main__":
   const dashboard = document.querySelector('#dashboard');
   const status = document.querySelector('#status');
   const key = 'timepro-timesheets-v1';
+  const apiBase = window.TIMEPRO_API_BASE || '';
+
+  async function api(path, options = {}) {
+    const response = await fetch(`${apiBase}${path}`, {headers: {'Content-Type': 'application/json'}, ...options});
+    if (!response.ok) throw new Error(`API ${response.status}`);
+    return response.json();
+  }
 
   function read() {
     try {
@@ -283,8 +290,7 @@ if __name__ == "__main__":
     error.textContent = '';
   }
 
-  function render() {
-    const items = read();
+  function render(items = read()) {
     history.innerHTML = items.length ? items.map(item =>
       `<article class="entry"><strong>${escapeHtml(item.date || '')}</strong><span>${escapeHtml(item.site || '')}</span><span>${escapeHtml(item.start)} → ${escapeHtml(item.end)}</span><b>${format(item.total)}</b></article>`
     ).join('') : '<p class="empty">Aucune feuille envoyée.</p>';
@@ -305,16 +311,23 @@ if __name__ == "__main__":
     const item = Object.fromEntries(data.entries());
     item.total = totalMinutes;
     item.createdAt = new Date().toISOString();
-    const items = read();
-    items.unshift(item);
-    if (!write(items)) return;
+    try {
+      await api('/api/timepro/timesheets', {method: 'POST', body: JSON.stringify({employee: item.employee, company: item.company, work_date: item.date, location: item.site, start_time: item.start, pause_minutes: item.pause || 0, end_time: item.end, note: item.note || ''})});
+      status.textContent = 'Feuille envoyée au serveur';
+      const remote = await api('/api/timepro/timesheets');
+      render(remote.map(x => ({employee:x.employee, date:x.work_date, site:x.location, start:x.start_time, end:x.end_time, total:Number(x.total_minutes)})));
+    } catch (_) {
+      const items = read();
+      items.unshift(item);
+      if (!write(items)) return;
+      status.textContent = 'Serveur indisponible — feuille enregistrée localement';
+      render(items);
+    }
     form.reset();
     total.textContent = '0h 00min';
-    status.textContent = 'Feuille envoyée avec succès';
-    render();
   });
 
-  render();
+  api('/api/timepro/timesheets').then(rows => render(rows.map(x => ({employee:x.employee, date:x.work_date, site:x.location, start:x.start_time, end:x.end_time, total:Number(x.total_minutes)})))).catch(() => render());
 });
 '''
 
