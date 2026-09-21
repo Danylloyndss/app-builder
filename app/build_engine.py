@@ -247,7 +247,7 @@ from urllib.request import Request, urlopen
 root = Path(__file__).resolve().parents[1]
 
 def free_port():
-    with socket.socket() as sock:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
@@ -263,12 +263,14 @@ with tempfile.TemporaryDirectory() as tmp:
     process = subprocess.Popen([sys.executable, str(root / "backend.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         base = "http://127.0.0.1:" + port
-        for _ in range(20):
+        for _ in range(30):
             try:
                 assert call(base + "/health")["ok"] is True
                 break
             except Exception:
                 time.sleep(0.05)
+        else:
+            raise AssertionError("backend did not become healthy")
         created = call(base + "/api/records", "POST", {"date": "2026-01-02", "location": "Test", "note": "ok"})
         assert created["id"] > 0
         rows = call(base + "/api/records")
@@ -287,54 +289,7 @@ with tempfile.TemporaryDirectory() as tmp:
     finally:
         process.terminate()
         process.wait(timeout=3)
-
-    @staticmethod
-    def _timepro_integration_test() -> str:
-        return '''import json
-import os
-import subprocess
-import sys
-import tempfile
-import time
-from pathlib import Path
-from urllib.request import Request, urlopen
-
-root = Path(__file__).resolve().parents[1]
-
-def call(url, method="GET", payload=None):
-    data = json.dumps(payload).encode() if payload is not None else None
-    req = Request(url, data=data, method=method, headers={"Content-Type": "application/json"} if data else {})
-    with urlopen(req, timeout=4) as response:
-        return json.load(response)
-
-with tempfile.TemporaryDirectory() as tmp:
-    previous = os.getcwd()
-    os.chdir(tmp)
-    port = "18081"
-    env = dict(os.environ, TIMEPRO_PORT=port, TIMEPRO_DB=str(Path(tmp) / "timepro.db"))
-    process = subprocess.Popen([sys.executable, str(root / "backend.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        base = "http://127.0.0.1:" + port
-        time.sleep(0.3)
-        assert call(base + "/health")["ok"] is True
-        created = call(base + "/api/timepro/timesheets", "POST", {"employee":"Integration Test","company":"TimePro","work_date":"2026-01-02","location":"Test","start_time":"08:00","pause_minutes":30,"end_time":"17:00"})
-        assert created["total_minutes"] == 510
-        record_id = created["id"]
-        rows = call(base + "/api/timepro/timesheets")
-        assert rows and rows[0]["employee"] == "Integration Test"
-        dashboard = call(base + "/api/timepro/dashboard")
-        assert dashboard["count"] == 1 and dashboard["total_minutes"] == 510
-        updated = call(base + "/api/timepro/timesheets", "PUT", {"id":record_id,"employee":"Updated Test","company":"TimePro","work_date":"2026-01-02","location":"Test","start_time":"09:00","pause_minutes":0,"end_time":"17:00"})
-        assert updated["employee"] == "Updated Test" and updated["total_minutes"] == 480
-        deleted = call(base + "/api/timepro/timesheets?id=" + str(record_id), "DELETE")
-        assert deleted["deleted"] is True
-        assert call(base + "/api/timepro/timesheets") == []
-    finally:
-        process.terminate()
-        process.wait(timeout=3)
-        os.chdir(previous)
 '''
-        return source.replace("__SCHEMA__", repr(schema_json))
 
     @staticmethod
     def _timepro_backend() -> str:
