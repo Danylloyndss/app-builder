@@ -14,8 +14,12 @@ class CheckpointStore:
 
     def create(self, label: str = "checkpoint") -> Path:
         safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in label.lower()).strip("-") or "checkpoint"
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         target = self.root / f"{stamp}-{safe}"
+        suffix = 1
+        while target.exists():
+            target = self.root / f"{stamp}-{safe}-{suffix}"
+            suffix += 1
         target.mkdir(parents=True, exist_ok=False)
         for source in self.workspace.iterdir():
             if source.name in {".app-builder", "__pycache__"}:
