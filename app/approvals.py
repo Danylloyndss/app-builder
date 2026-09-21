@@ -46,6 +46,13 @@ class ApprovalStore:
             return next((item for item in items if item["id"] == request_id and item["status"] == "approved"), None)
         return next((item for item in items if item["action"] == action and item["status"] == "approved"), None)
 
+    def decision_for(self, action: str, request_id: str | None = None) -> dict | None:
+        """Return the persisted approval decision, including rejection."""
+        items = self._load()
+        if request_id:
+            return next((item for item in items if item["id"] == request_id), None)
+        return next((item for item in items if item["action"] == action and item["status"] in {"approved", "rejected"}), None)
+
     def consume(self, request_id: str) -> dict | None:
         items = self._load()
         for item in items:
