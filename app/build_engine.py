@@ -70,10 +70,11 @@ class BuildEngine:
             self.project.write_file("index.html", self._timepro_html())
             self.project.write_file("app.js", self._timepro_javascript())
             self.project.write_file("README.md", self._timepro_readme())
+            self.project.write_file("api_contract.json", self._timepro_api_contract())
             self.project.write_file("hello_app.txt", "TimePro\n")
             self.project.write_file(".app-builder/mission.txt", mission + "\n")
-            self._save_features(["forms", "storage", "calculator", "list", "dashboard", "mobile"])
-            return "Implemented TimePro functional MVP"
+            self._save_features(["forms", "storage", "calculator", "list", "dashboard", "mobile", "api-contract"])
+            return "Implemented TimePro functional MVP with backend contract"
         title = self._title(mission)
         features = self.detect_features(mission)
         self.project.write_file("index.html", self._html(title, mission, features))
@@ -296,6 +297,21 @@ class BuildEngine:
 </main><script src="app.js"></script></body>
 </html>
 '''
+
+    @staticmethod
+    def _timepro_api_contract() -> str:
+        return json.dumps({
+            "version": 1,
+            "base_path": "/api/timepro",
+            "resources": {
+                "timesheets": {"methods": ["GET", "POST", "PUT", "DELETE"], "fields": ["employee", "company", "date", "site", "location", "start", "break", "end", "photos", "note", "signature"], "server_rules": ["end >= start", "break >= 0", "total = end - start - break"]},
+                "dashboard": {"methods": ["GET"], "resource": "timesheets"},
+                "attachments": {"methods": ["POST"], "optional": True},
+                "signature": {"methods": ["POST"], "optional": True}
+            },
+            "persistence": {"required": True, "adapter_boundary": True},
+            "authentication": {"required_for_production": True, "approval_for_external_provider": True}
+        }, indent=2, ensure_ascii=False) + "\n"
 
     @staticmethod
     def _timepro_readme() -> str:
