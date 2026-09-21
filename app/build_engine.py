@@ -34,7 +34,7 @@ class BuildEngine:
             return self.implement_feature("calculator", mission)
         if "implement history and lists" in normalized:
             return self.implement_feature("list", mission)
-        if "validate backend and persistence contract" in normalized:
+        if "generate backend and persistence layer" in normalized or "validate backend and persistence contract" in normalized:
             return self.implement_backend(mission)
         if "implement requested functionality" in normalized:
             return self.implement(mission)
