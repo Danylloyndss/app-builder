@@ -597,7 +597,7 @@ Les données sont stockées dans `localStorage`. L’authentification, une vraie
     def _javascript(features: list[str] | None = None) -> str:
         features = features or []
         blocks = [
-            "document.addEventListener('DOMContentLoaded', () => {",
+            "document.addEventListener('DOMContentLoaded', async () => {",
             "  const status = document.querySelector('[data-builder-status]');",
             "  if (status) status.textContent = 'App generated successfully';",
         ]
