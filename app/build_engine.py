@@ -99,6 +99,7 @@ class BuildEngine:
     @staticmethod
     def _timepro_integration_test() -> str:
         return '''import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -107,22 +108,38 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 root = Path(__file__).resolve().parents[1]
+
+def call(url, method="GET", payload=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = Request(url, data=data, method=method, headers={"Content-Type": "application/json"} if data else {})
+    with urlopen(req, timeout=4) as response:
+        return json.load(response)
+
 with tempfile.TemporaryDirectory() as tmp:
-    import os
-    previous = os.getcwd(); os.chdir(tmp)
+    previous = os.getcwd()
+    os.chdir(tmp)
+    port = "18081"
+    env = dict(os.environ, TIMEPRO_PORT=port, TIMEPRO_DB=str(Path(tmp) / "timepro.db"))
+    process = subprocess.Popen([sys.executable, str(root / "backend.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        process = subprocess.Popen([sys.executable, str(root / "backend.py")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            time.sleep(0.3)
-            payload = json.dumps({"employee":"Integration Test","company":"TimePro","work_date":"2026-01-02","location":"Test","start_time":"08:00","pause_minutes":30,"end_time":"17:00"}).encode()
-            req = Request("http://127.0.0.1:8001/api/timepro/timesheets", data=payload, headers={"Content-Type":"application/json"})
-            created = json.load(urlopen(req, timeout=3))
-            assert created["total_minutes"] == 510
-            rows = json.load(urlopen("http://127.0.0.1:8001/api/timepro/timesheets", timeout=3))
-            assert rows and rows[0]["employee"] == "Integration Test"
-        finally:
-            process.terminate(); process.wait(timeout=3)
+        base = "http://127.0.0.1:" + port
+        time.sleep(0.3)
+        assert call(base + "/health")["ok"] is True
+        created = call(base + "/api/timepro/timesheets", "POST", {"employee":"Integration Test","company":"TimePro","work_date":"2026-01-02","location":"Test","start_time":"08:00","pause_minutes":30,"end_time":"17:00"})
+        assert created["total_minutes"] == 510
+        record_id = created["id"]
+        rows = call(base + "/api/timepro/timesheets")
+        assert rows and rows[0]["employee"] == "Integration Test"
+        dashboard = call(base + "/api/timepro/dashboard")
+        assert dashboard["count"] == 1 and dashboard["total_minutes"] == 510
+        updated = call(base + "/api/timepro/timesheets", "PUT", {"id":record_id,"employee":"Updated Test","company":"TimePro","work_date":"2026-01-02","location":"Test","start_time":"09:00","pause_minutes":0,"end_time":"17:00"})
+        assert updated["employee"] == "Updated Test" and updated["total_minutes"] == 480
+        deleted = call(base + "/api/timepro/timesheets?id=" + str(record_id), "DELETE")
+        assert deleted["deleted"] is True
+        assert call(base + "/api/timepro/timesheets") == []
     finally:
+        process.terminate()
+        process.wait(timeout=3)
         os.chdir(previous)
 '''
     def _timepro_backend() -> str:
