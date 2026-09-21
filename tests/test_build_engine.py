@@ -94,6 +94,9 @@ class BuildEngineTests(unittest.TestCase):
             self.assertEqual(contract["resources"]["client"]["GET"], "/api/client")
             self.assertEqual(contract["resources"]["client"]["POST"], "/api/client")
             self.assertEqual(contract["compatibility"]["records"], "/api/records")
+            self.assertEqual(contract["resources"]["client"]["field_definitions"][0]["name"], "id")
+            self.assertEqual(contract["resources"]["client"]["field_definitions"][1]["type"], "text")
+            self.assertTrue(any(item["name"] == "name" and item["required"] for item in contract["resources"]["client"]["field_definitions"]))
 
 
 if __name__ == "__main__":
