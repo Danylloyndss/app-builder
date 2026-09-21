@@ -35,6 +35,22 @@ class TaskBuilderTests(unittest.TestCase):
             self.assertEqual(data[0]["id"], "spec")
             self.assertIn("acceptance", data[-1])
 
+    def test_graph_validation_rejects_unknown_dependency(self):
+        spec = SpecificationBuilder().build("Create a simple notes app")
+        architecture = ArchitectureBuilder().build(spec)
+        tasks = TaskBuilder().build(spec, architecture)
+        tasks[1].dependencies = ["does-not-exist"]
+        with self.assertRaisesRegex(ValueError, "unknown dependencies"):
+            TaskBuilder.validate_graph(tasks)
+
+    def test_graph_validation_rejects_cycles(self):
+        spec = SpecificationBuilder().build("Create a simple notes app")
+        architecture = ArchitectureBuilder().build(spec)
+        tasks = TaskBuilder().build(spec, architecture)
+        tasks[0].dependencies = [tasks[-1].id]
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            TaskBuilder.validate_graph(tasks)
+
 
 if __name__ == "__main__":
     unittest.main()
