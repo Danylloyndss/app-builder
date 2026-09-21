@@ -501,6 +501,17 @@ if __name__ == "__main__":
                 "PUT": "/api/" + resource + "?id={id}",
                 "DELETE": "/api/" + resource + "?id={id}",
             }
+        primary = schema.get("entity") or entities[0]
+        primary_resource = re.sub(r"(?<!^)(?=[A-Z])", "_", str(primary)).lower().replace("_", "-")
+        resources["records"] = {
+            "entity": primary,
+            "fields": fields_by_entity.get(primary, schema.get("fields", ["id"])),
+            "GET": "/api/records",
+            "POST": "/api/records",
+            "PUT": "/api/records?id={id}",
+            "DELETE": "/api/records?id={id}",
+            "compatibility_alias_for": primary_resource,
+        }
         return json.dumps({
             "version": 3,
             "base": "/api",
