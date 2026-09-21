@@ -50,4 +50,25 @@ class TimeProApiTests(unittest.TestCase):
     def test_delete_timesheet_removes_related_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             service=TimeProService(Path(tmp)/"timepro.db"); row=service.create_timesheet({"employee":"A","work_date":"2026-09-17","start_time":"08:00","end_time":"16:00"}); encoded=base64.b64encode(b"\x89PNG\r\n\x1a\nfile").decode(); service.add_attachment(row["id"],"x.png","image/png",encoded); service.save_signature(row["id"],encoded); self.assertTrue(service.delete_timesheet(row["id"])); self.assertEqual(service.history(),[])
+
+    def test_attachment_idempotency_returns_same_attachment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service=TimeProService(Path(tmp)/"timepro.db")
+            row=service.create_timesheet({"employee":"A","work_date":"2026-09-17","start_time":"08:00","end_time":"16:00"})
+            encoded=base64.b64encode(b"\x89PNG\r\n\x1a\nfile").decode()
+            first=service.add_attachment(row["id"],"x.png","image/png",encoded,"upload-1")
+            second=service.add_attachment(row["id"],"x.png","image/png",encoded,"upload-1")
+            self.assertEqual(first["id"],second["id"])
+            self.assertEqual(len(service.history()[0]["attachments"]),1)
+
+    def test_signature_can_be_retrieved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service=TimeProService(Path(tmp)/"timepro.db")
+            row=service.create_timesheet({"employee":"A","work_date":"2026-09-17","start_time":"08:00","end_time":"16:00"})
+            encoded=base64.b64encode(b"\x89PNG\r\n\x1a\nfile").decode()
+            service.save_signature(row["id"],encoded)
+            signature=service.get_signature(row["id"])
+            self.assertTrue(signature)
+            self.assertTrue(Path(signature["stored_path"]).exists())
+
 if __name__=="__main__": unittest.main()
