@@ -30,7 +30,8 @@ def _run_pending_jobs():
     try:
         while True:
             jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
-            if not job: return
+            if not job:
+                return
             job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
             try:
                 Manager(workspace=WORKSPACE).run(job["mission"],resume=bool(job.get("resume")))
