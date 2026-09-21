@@ -74,6 +74,9 @@ class BuildEngineTests(unittest.TestCase):
             self.assertIn("date", schema["fields"])
             self.assertEqual(manifest["schema"], ".app-builder/backend_schema.json")
             self.assertEqual(contract["resources"]["records"]["fields"], schema["fields"])
+            self.assertEqual(contract["primary_entity"], schema["entity"])
+            self.assertIn("business_rules", contract)
+            self.assertIn(schema["entity"], [item["entity"] for item in contract["resources"].values()])
             py_compile.compile(str(Path(temp_dir) / "backend.py"), doraise=True)
             py_compile.compile(str(Path(temp_dir) / "tests" / "test_backend_integration.py"), doraise=True)
             integration = subprocess.run(
