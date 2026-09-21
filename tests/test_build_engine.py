@@ -54,6 +54,11 @@ class BuildEngineTests(unittest.TestCase):
         self.assertIn("Expense", spec.data_entities)
         self.assertIn("Client", spec.data_entities)
 
+    def test_spec_infers_entity_fields_and_rules(self) -> None:
+        spec = SpecificationBuilder().build("Create an expense tracker for clients with data storage and amounts")
+        self.assertIn("Expense", spec.entity_fields)
+        self.assertIn("amount", spec.entity_fields["Expense"])
+        self.assertTrue(any("Expense amount" in rule for rule in spec.business_rules))
     def test_generic_storage_generates_schema_and_contract(self) -> None:
         mission = "Create a mobile client records app with a form, data storage and history"
         with tempfile.TemporaryDirectory() as temp_dir:
