@@ -135,6 +135,8 @@ SCHEMA = json.loads(__SCHEMA__)
 def init_db():
     with sqlite3.connect(DB) as db:
         db.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        db.execute("CREATE TABLE IF NOT EXISTS entity_records (id INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_entity_records_entity ON entity_records(entity)")
 
 def payload(row):
     return {"id": row[0], **json.loads(row[1]), "created_at": row[2]}
@@ -155,15 +157,16 @@ def validate(data):
 
 def save(data, record_id=None):
     encoded = json.dumps(data, ensure_ascii=False)
+    entity = str(SCHEMA.get("entity") or "ApplicationRecord")
     with sqlite3.connect(DB) as db:
         if record_id is None:
-            cur = db.execute("INSERT INTO records (data) VALUES (?)", (encoded,))
+            cur = db.execute("INSERT INTO entity_records (entity, data) VALUES (?, ?)", (entity, encoded))
             record_id = cur.lastrowid
         else:
-            changed = db.execute("UPDATE records SET data=? WHERE id=?", (encoded, record_id)).rowcount
+            changed = db.execute("UPDATE entity_records SET data=? WHERE id=? AND entity=?", (encoded, record_id, entity)).rowcount
             if not changed:
                 return None
-        return db.execute("SELECT id, data, created_at FROM records WHERE id=?", (record_id,)).fetchone()
+        return db.execute("SELECT id, data, created_at FROM entity_records WHERE id=? AND entity=?", (record_id, entity)).fetchone()
 
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, value):
@@ -186,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"ok": True, "entity": SCHEMA.get("entity")})
         if path == "/api/records":
             with sqlite3.connect(DB) as db:
-                rows = db.execute("SELECT id, data, created_at FROM records ORDER BY id DESC").fetchall()
+                rows = db.execute("SELECT id, data, created_at FROM entity_records WHERE entity=? ORDER BY id DESC", (str(SCHEMA.get("entity") or "ApplicationRecord"),)).fetchall()
             return self.send_json(200, [payload(row) for row in rows])
         return self.send_json(404, {"error": "not found"})
 
@@ -220,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             record_id = int(parse_qs(parsed.query).get("id", ["0"])[0])
             with sqlite3.connect(DB) as db:
-                changed = db.execute("DELETE FROM records WHERE id=?", (record_id,)).rowcount
+                changed = db.execute("DELETE FROM entity_records WHERE id=? AND entity=?", (record_id, str(SCHEMA.get("entity") or "ApplicationRecord"))).rowcount
             return self.send_json(200, {"deleted": True}) if changed else self.send_json(404, {"error": "not found"})
         except ValueError:
             return self.send_json(400, {"error": "id is required"})
