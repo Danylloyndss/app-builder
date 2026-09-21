@@ -28,6 +28,12 @@ def _run_pending_jobs():
     if not RUN_LOCK.acquire(blocking=False): return
     from datetime import datetime,timezone
     try:
+        jobs=_load_jobs()
+        changed=False
+        for stale in jobs:
+            if stale.get("status")=="running":
+                stale["status"]="pending"; stale["error"]="Recovered after worker restart"; stale["started_at"]=None; changed=True
+        if changed: _save_jobs(jobs)
         while True:
             jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
             if not job:
