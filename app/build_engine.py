@@ -484,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
             with sqlite3.connect(DB) as db:
                 db.row_factory = sqlite3.Row
                 rows = [dict(r) for r in db.execute("SELECT * FROM timesheets ORDER BY id DESC").fetchall()]
-            return self.send_json(200, {"count": len(rows), "total_minutes": sum(int(r["total_minutes"]) for r in rows), "employees": sorted({r["employee"] for r in rows}), "timesheets": rows})
+            return self.send_json(200, {"count": len(rows), "total_minutes": sum(int(r["total_minutes"]) for r in rows), "employees": sorted({r["employee"] for r in rows}), "timesheets": len(rows)})
         return self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
