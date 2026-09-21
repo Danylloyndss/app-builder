@@ -5,6 +5,7 @@ import py_compile
 from pathlib import Path
 
 from app.build_engine import BuildEngine
+from app.specification import SpecificationBuilder
 from app.manager import Manager
 
 
@@ -45,6 +46,11 @@ class BuildEngineTests(unittest.TestCase):
             engine.implement("<script>alert('x')</script>")
             html = (Path(temp_dir) / "index.html").read_text(encoding="utf-8")
             self.assertNotIn("<script>alert('x')</script>", html)
+
+    def test_generic_spec_infers_domain_entities(self) -> None:
+        spec = SpecificationBuilder().build("Create an expense tracker for clients with data storage")
+        self.assertIn("Expense", spec.data_entities)
+        self.assertIn("Client", spec.data_entities)
 
     def test_generic_storage_generates_schema_and_contract(self) -> None:
         mission = "Create a mobile client records app with a form, data storage and history"
