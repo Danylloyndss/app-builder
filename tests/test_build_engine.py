@@ -45,6 +45,22 @@ class BuildEngineTests(unittest.TestCase):
             html = (Path(temp_dir) / "index.html").read_text(encoding="utf-8")
             self.assertNotIn("<script>alert('x')</script>", html)
 
+    def test_generic_storage_generates_schema_and_contract(self) -> None:
+        mission = "Create a mobile client records app with a form, data storage and history"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = BuildEngine(Path(temp_dir))
+            engine.implement(mission)
+            engine.implement_backend(mission)
+
+            schema = json.loads((Path(temp_dir) / ".app-builder" / "backend_schema.json").read_text(encoding="utf-8"))
+            manifest = json.loads((Path(temp_dir) / ".app-builder" / "backend.json").read_text(encoding="utf-8"))
+            contract = json.loads((Path(temp_dir) / "api_contract.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(schema["entity"], "ApplicationRecord")
+            self.assertIn("date", schema["fields"])
+            self.assertEqual(manifest["schema"], ".app-builder/backend_schema.json")
+            self.assertEqual(contract["resources"]["records"]["fields"], schema["fields"])
+
 
 if __name__ == "__main__":
     unittest.main()
