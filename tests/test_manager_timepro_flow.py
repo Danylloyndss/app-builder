@@ -12,7 +12,11 @@ class TimeProManagerFlowTests(unittest.TestCase):
             root = Path(directory)
             memory = Manager(workspace=str(root)).run("Construa o TimePro")
 
-            self.assertEqual(memory.status, "completed")
+            self.assertEqual(memory.status, "completed", json.dumps({
+                "errors": memory.errors,
+                "diagnostics": memory.diagnostics,
+                "history": memory.history[-10:],
+            }, ensure_ascii=False))
             self.assertEqual(memory.errors, [])
             self.assertEqual(memory.task_statuses.get("test"), "completed")
             self.assertEqual(memory.task_statuses.get("repair"), "completed")
