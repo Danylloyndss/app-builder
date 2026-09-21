@@ -123,9 +123,23 @@ class Manager:
                 repair = next((item for item in tasks if item.id == "repair"), None)
                 if repair is not None and self.memory.task_statuses.get("repair") != "completed": self.memory.task_statuses["repair"] = "completed"; repair.status = "completed"; self.memory.completed.append("Repair skipped: tests passed"); self.memory.record("repair_skipped", reason="tests_passed")
             elif task.id == "acceptance":
-                if not self._run_quality_gate():
-                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append("Acceptance checks failed"); self.memory.record("acceptance_failed", task_id=task.id); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
-                result = "Acceptance checks passed"
+                quality_ok = self._run_quality_gate()
+                quality_attempts = 0
+                while not quality_ok and quality_attempts < self.max_retries:
+                    self._check_cancelled()
+                    quality_attempts += 1
+                    report_path = self.workspace / ".app-builder" / "quality_report.json"
+                    report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else "quality gate failed"
+                    self.memory.errors.append(f"Quality repair attempt {quality_attempts}: {report_text[-1500:]}")
+                    self.memory.record("quality_repair", attempt=quality_attempts, report=report_text[-1500:])
+                    self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
+                    quality_ok = self._run_quality_gate()
+                if not quality_ok:
+                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"
+                    self.memory.errors.append("Acceptance checks failed after automatic repair")
+                    self.memory.record("acceptance_failed", task_id=task.id, repair_attempts=quality_attempts)
+                    self._save_tasks(tasks); self.memory.save(self.memory_path); return False
+                result = "Acceptance checks passed" if quality_attempts == 0 else f"Acceptance checks passed after {quality_attempts} automatic repair(s)"
             else: result = self.executor.execute(task.title, self.workspace, self.memory.mission)
             self._check_cancelled()
             self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running"); self.memory.completed.append(result)
