@@ -61,8 +61,8 @@ class TimeProService:
             if existing: return existing
         employee, company, work_date, location, start_time, pause, end_time, note = self._validate_payload(payload)
         total = calculate_total(start_time, end_time, pause)
-        self.db.execute("INSERT INTO timesheets (employee, company, work_date, location, start_time, pause_minutes, end_time, total_minutes, note, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",(employee,company,work_date,location,start_time,pause,end_time,total,note,key))
-        return self.db.fetch_one("SELECT * FROM timesheets WHERE id = last_insert_rowid()") or {}
+        record_id = self.db.execute_insert("INSERT INTO timesheets (employee, company, work_date, location, start_time, pause_minutes, end_time, total_minutes, note, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",(employee,company,work_date,location,start_time,pause,end_time,total,note,key))
+        return self.db.fetch_one("SELECT * FROM timesheets WHERE id=?", (record_id,)) or {}
 
     def update_timesheet(self, timesheet_id: int, payload: dict) -> dict:
         try: record_id = int(timesheet_id)
@@ -131,8 +131,8 @@ class TimeProService:
         if ext==".webp" and not (raw.startswith(b"RIFF") and len(raw)>=12 and raw[8:12]==b"WEBP"): raise TimeProValidationError("file content does not match its extension")
         token=secrets.token_hex(8); stored=self.root/f"{record_id}_{token}{ext}"; stored.write_bytes(raw)
         detected=mimetypes.guess_type(safe)[0] or "application/octet-stream"
-        self.db.execute("INSERT INTO timesheet_attachments(timesheet_id,filename,stored_path,mime_type,client_id) VALUES(?,?,?,?,?)",(record_id,safe, str(stored), detected, client_id))
-        return self.db.fetch_one("SELECT id,filename,mime_type,created_at FROM timesheet_attachments WHERE id=last_insert_rowid()") or {}
+        attachment_id = self.db.execute_insert("INSERT INTO timesheet_attachments(timesheet_id,filename,stored_path,mime_type,client_id) VALUES(?,?,?,?,?)",(record_id,safe, str(stored), detected, client_id))
+        return self.db.fetch_one("SELECT id,filename,mime_type,created_at FROM timesheet_attachments WHERE id=?", (attachment_id,)) or {}
 
     def get_signature(self, timesheet_id: int) -> dict | None:
         try: record_id = int(timesheet_id)
