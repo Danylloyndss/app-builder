@@ -51,7 +51,7 @@ class TaskBuilder:
                 previous = task_id
 
         tasks.append(BuildTask("implement", "Implement requested functionality", "build", [previous], "medium"))
-        if "data storage" in features:
+        if "data storage" in features or "storage" in features:
             tasks.append(BuildTask("backend_contract", "Validate backend and persistence contract", "storage", ["implement"], "medium", ["Persistence boundary is explicitly defined"]))
             backend_previous = "backend_contract"
         else:
