@@ -116,8 +116,11 @@ class Manager:
         if needs_approval and not approved:
             existing = next((x for x in self.approvals.list_pending() if x["action"] == task.title), None)
             request = existing or self.approvals.create(task.title, "Human approval required before this task can execute.")
+            request_id = request["id"] if isinstance(request, dict) else request.id
+            self.memory.diagnostics["approval_id"] = request_id
+            self.memory.diagnostics["approval_task_id"] = task.id
             self.memory.task_statuses[task.id] = "waiting_for_approval"; self._progress("waiting_for_approval"); task.status = "waiting_for_approval"; self.memory.status = "waiting_for_approval"
-            self.memory.record("approval_requested", request_id=request["id"] if isinstance(request, dict) else request.id, task_id=task.id, task=task.title); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
+            self.memory.record("approval_requested", request_id=request_id, task_id=task.id, task=task.title); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
         if not decision.allowed and not decision.requires_approval:
             self.memory.task_statuses[task.id] = "blocked"; task.status = "blocked"; self.memory.status = "blocked"; self.memory.errors.append(decision.reason); self.memory.record("action_blocked", task_id=task.id, reason=decision.reason); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
         try:
