@@ -67,6 +67,36 @@ class TaskBuilder:
         return tasks
 
     @staticmethod
+    def validate_graph(tasks: list[BuildTask]) -> None:
+        """Validate task IDs, dependency references, and cycles before execution."""
+        ids = [task.id for task in tasks]
+        if len(ids) != len(set(ids)):
+            duplicates = sorted({task_id for task_id in ids if ids.count(task_id) > 1})
+            raise ValueError("Duplicate task IDs: " + ", ".join(duplicates))
+
+        known = set(ids)
+        for task in tasks:
+            missing = [dep for dep in task.dependencies if dep not in known]
+            if missing:
+                raise ValueError(f"Task {task.id} has unknown dependencies: {', '.join(missing)}")
+
+        state = {}
+        def visit(task_id: str) -> None:
+            if state.get(task_id) == "visiting":
+                raise ValueError(f"Task dependency cycle detected at {task_id}")
+            if state.get(task_id) == "done":
+                return
+            state[task_id] = "visiting"
+            task = next(item for item in tasks if item.id == task_id)
+            for dep in task.dependencies:
+                visit(dep)
+            state[task_id] = "done"
+
+        for task_id in ids:
+            visit(task_id)
+
+    @staticmethod
     def save(tasks: list[BuildTask], path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps([asdict(task) for task in tasks], indent=2, ensure_ascii=False), encoding="utf-8")
+
