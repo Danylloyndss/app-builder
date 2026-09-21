@@ -59,6 +59,16 @@ class Tester:
         if "<html" not in index.lower() or not script.strip():
             return False, "Generated web app files are invalid or empty"
 
+        # Catch JavaScript syntax errors before calling the build successful.
+        # Node is optional; when unavailable, keep the deterministic checks below.
+        node = self.executor.run_command(["node", "--check", "app.js"], workspace)
+        if node[0] == 0:
+            syntax_ok = True
+        elif "not found" in node[1].lower() or "no such file" in node[1].lower():
+            syntax_ok = True
+        else:
+            return False, f"JavaScript syntax check failed: {node[1][-1500:]}"
+
         if self._is_timepro(workspace):
             ok, message = self._test_timepro(workspace)
             if not ok:
