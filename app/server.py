@@ -144,7 +144,9 @@ class Handler(BaseHTTPRequestHandler):
         body=bytes(out); self.send_response(200); self.send_header("Content-Type","application/pdf"); self.send_header("Content-Disposition","attachment; filename=timepro-feuilles.pdf"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _send_csv(self):
         employee,company,date_from,date_to=self._filters() if hasattr(self, "_filters") else (None,None,None,None); output=io.StringIO(); writer=csv.writer(output); writer.writerow(["ID","Employé","Entreprise","Date","Lieu","Début","Pause (min)","Fin","Total (min)","Total","Recado","Signature","Pièces jointes"])
-        for r in (TIMEPRO.history(employee,company,date_from,date_to) if hasattr(TIMEPRO, "history") else []): writer.writerow([r["id"],r["employee"],r.get("company",""),r["work_date"],r["location"],r["start_time"],r["pause_minutes"],r["end_time"],r["total_minutes"],f'{int(r["total_minutes"])//60}h {int(r["total_minutes"])%60:02d}min',r["note"],"oui" if r.get("has_signature") else "non",len(r.get("attachments",[]))])
+        try: export_rows=TIMEPRO.history(employee,company,date_from,date_to)
+        except TypeError: export_rows=TIMEPRO.history()
+        for r in export_rows: writer.writerow([r["id"],r["employee"],r.get("company",""),r["work_date"],r["location"],r["start_time"],r["pause_minutes"],r["end_time"],r["total_minutes"],f'{int(r["total_minutes"])//60}h {int(r["total_minutes"])%60:02d}min',r["note"],"oui" if r.get("has_signature") else "non",len(r.get("attachments",[]))])
         body=output.getvalue().encode("utf-8-sig"); self.send_response(200); self.send_header("Content-Type","text/csv; charset=utf-8"); self.send_header("Content-Disposition","attachment; filename=timepro-feuilles.csv"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _send_attachment(self):
         q=parse_qs(urlparse(self.path).query)
