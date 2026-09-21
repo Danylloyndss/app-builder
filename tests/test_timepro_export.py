@@ -7,6 +7,27 @@ from app.server import Handler
 
 
 class TimeProExportTests(unittest.TestCase):
+    def test_pdf_contains_report(self):
+        class DummyTimePro:
+            def history(self,*args):
+                return [{"id":1,"employee":"A","company":"C","work_date":"2026-09-17","location":"Site","start_time":"08:00","end_time":"17:00","pause_minutes":30,"total_minutes":510,"note":"","has_signature":False,"attachments":[]}]
+        class DummyHandler: pass
+        DummyHandler._filters=lambda self:(None,None,None,None)
+        DummyHandler._send_pdf=Handler._send_pdf
+        with patch("app.server.TIMEPRO",DummyTimePro()):
+            class W:
+                def __init__(self): self.headers=[]; self.body=None
+                def send_response(self,s): self.status=s
+                def send_header(self,k,v): self.headers.append((k,v))
+                def end_headers(self): pass
+                def write(self,b): self.body=b
+            w=W(); obj=DummyHandler(); obj.send_response=w.send_response; obj.send_header=w.send_header; obj.end_headers=w.end_headers; obj.wfile=w
+            Handler._send_pdf(obj)
+            self.assertEqual(w.status,200)
+            self.assertTrue(w.body.startswith(b"%PDF-1.4"))
+            self.assertIn(b"2026-09-17",w.body)
+            self.assertIn(b"8h 30",w.body)
+
     def test_csv_contains_expected_columns(self):
         class DummyTimePro:
             def history(self):
