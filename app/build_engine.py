@@ -162,7 +162,8 @@ with tempfile.TemporaryDirectory() as tmp:
         process.terminate()
         process.wait(timeout=3)
         os.chdir(previous)
-'''
+'''        return source.replace("__SCHEMA__", repr(schema_json))
+
     def _timepro_backend() -> str:
         return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -309,7 +310,7 @@ if __name__ == "__main__":
     def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
         schema = schema or {"entity": "ApplicationRecord", "fields": ["id"], "business_rules": []}
         schema_json = json.dumps(schema, ensure_ascii=False)
-        return f"""from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        source = """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import sqlite3
