@@ -83,6 +83,8 @@ class BuildEngine:
         self.project.write_file("app.js", self._javascript(features))
         self.project.write_file("README.md", self._readme(mission, features))
         self.project.write_file("hello_app.txt", f"{title}\n")
+        if "storage" in features:
+            self.project.write_file("api_contract.json", self._generic_api_contract())
         self.project.write_file(".app-builder/mission.txt", mission + "\n")
         self._save_features(features)
         return f"Implemented generated app: {title} ({len(features)} features)"
