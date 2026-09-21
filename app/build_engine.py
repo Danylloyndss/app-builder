@@ -164,6 +164,7 @@ with tempfile.TemporaryDirectory() as tmp:
         os.chdir(previous)
 '''        return source.replace("__SCHEMA__", repr(schema_json))
 
+    @staticmethod
     def _timepro_backend() -> str:
         return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
