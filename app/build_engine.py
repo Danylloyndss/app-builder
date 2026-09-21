@@ -96,7 +96,6 @@ class BuildEngine:
         return "TimePro backend persistence service generated"
 
     @staticmethod
-    @staticmethod
     def _timepro_integration_test() -> str:
         return '''import json
 import subprocess
@@ -333,7 +332,7 @@ if __name__ == "__main__":
   }
 
   [start, end, pause].forEach(input => input?.addEventListener('input', updateTotal));
-  form?.addEventListener('submit', event => {
+  form?.addEventListener('submit', async event => {
     event.preventDefault();
     const totalMinutes = duration();
     if (totalMinutes === null || totalMinutes < 0) { error.textContent = 'Vérifie les heures de début, de fin et la pause.'; return; }
@@ -343,7 +342,7 @@ if __name__ == "__main__":
     item.createdAt = new Date().toISOString();
     try {
       await api('/api/timepro/timesheets', {method: 'POST', body: JSON.stringify({employee: item.employee, company: item.company, work_date: item.date, location: item.site, start_time: item.start, pause_minutes: item.pause || 0, end_time: item.end, note: item.note || ''})});
-      status.textContent = 'Feuille envoyée au serveur';
+      status.textContent = 'Feuille envoyée avec succès';
       const remote = await api('/api/timepro/timesheets');
       render(remote.map(x => ({employee:x.employee, date:x.work_date, site:x.location, start:x.start_time, end:x.end_time, total:Number(x.total_minutes)})));
     } catch (_) {
