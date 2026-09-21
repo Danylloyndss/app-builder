@@ -65,6 +65,7 @@ def _run_pending_jobs():
                         current_now["result_status"]=state
                         current_now["completed_count"]=len(memory.completed)
                         current_now["error_count"]=len(memory.errors)
+                        _save_jobs(jobs_now)
                         _job_event(current_now,"progress",f"{state}: {memory.current_task}" if memory.current_task else str(state))
                 memory=Manager(workspace=WORKSPACE, progress_callback=progress).run(job["mission"],resume=bool(job.get("resume")))
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="completed" if memory.status != "cancelled" else "cancelled"; current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
