@@ -332,6 +332,86 @@ with tempfile.TemporaryDirectory() as tmp:
 '''.replace("__RESOURCE__", resource).replace("__SAMPLE__", sample_json).replace("__UPDATE__", update_json)
 
     @staticmethod
+    def _timepro_integration_test() -> str:
+        return r'''import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+def call(base, path, method="GET", payload=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    request = Request(base + path, data=data, method=method, headers={"Content-Type": "application/json"} if data else {})
+    with urlopen(request, timeout=4) as response:
+        return json.load(response)
+
+with tempfile.TemporaryDirectory() as tmp:
+    port = free_port()
+    env = dict(os.environ, TIMEPRO_PORT=str(port), TIMEPRO_DB=str(Path(tmp) / "timepro.db"))
+    process = subprocess.Popen([sys.executable, str(ROOT / "backend.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        base = "http://127.0.0.1:" + str(port)
+        for _ in range(40):
+            try:
+                assert call(base, "/health")["ok"] is True
+                break
+            except Exception:
+                time.sleep(0.05)
+        else:
+            raise AssertionError("TimePro backend did not become healthy")
+
+        created = call(base, "/api/timepro/timesheets", "POST", {
+            "employee": "Test Employee",
+            "company": "Test Company",
+            "work_date": "2026-01-02",
+            "location": "Test Site",
+            "start_time": "08:00",
+            "pause_minutes": 30,
+            "end_time": "17:00",
+            "note": "integration",
+        })
+        assert created["id"] > 0
+        assert created["total_minutes"] == 510
+
+        rows = call(base, "/api/timepro/timesheets")
+        assert len(rows) == 1
+        assert rows[0]["id"] == created["id"]
+
+        dashboard = call(base, "/api/timepro/dashboard")
+        assert dashboard["timesheets"] == 1
+
+        updated = call(base, "/api/timepro/timesheets?id=" + str(created["id"]), "PUT", {
+            "employee": "Updated Employee",
+            "company": "Test Company",
+            "work_date": "2026-01-02",
+            "location": "Updated Site",
+            "start_time": "08:00",
+            "pause_minutes": 30,
+            "end_time": "17:00",
+            "note": "updated",
+        })
+        assert updated["id"] == created["id"]
+
+        deleted = call(base, "/api/timepro/timesheets?id=" + str(created["id"]), "DELETE")
+        assert deleted["deleted"] is True
+        assert call(base, "/api/timepro/timesheets") == []
+    finally:
+        process.terminate()
+        process.wait(timeout=3)
+'''
+    
+    @staticmethod
     def _timepro_backend() -> str:
         return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
