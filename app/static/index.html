@@ -10,22 +10,28 @@
 <body><main><div class="card">
 <span class="pill">APP BUILDER V1</span><h1>O que você quer criar?</h1><div class="muted">Descreva o aplicativo em linguagem normal. O agente transforma a ideia em especificação, arquitetura, tarefas, código e testes.</div>
 <textarea id="mission" placeholder="Ex.: Crie um aplicativo de folha de horas para funcionários, com cadastro, entrada, pausa, saída e painel da empresa."></textarea>
-<button id="run">Começar construção</button><button id="resume" class="resume">Continuar construção</button>
+<button id="run">Começar construção</button><button id="background">Rodar em segundo plano</button><button id="resume" class="resume">Continuar construção</button>
 <div id="status" class="status">Pronto para receber uma missão.</div>
 <div id="waiting" class="waiting"></div>
-<div id="result" class="result"><div class="section"><b>Progresso das tarefas</b><div id="tasks"></div></div><div class="section"><b>Plano</b><ul id="plan"></ul></div><div class="section"><b>Concluído</b><ul id="completed"></ul></div><div class="section"><b>Erros</b><ul id="errors"></ul></div></div>
+<div id="result" class="result"><div class="section"><b>Fila de execução</b><div id="jobs"></div></div><div class="section"><b>Progresso das tarefas</b><div id="tasks"></div></div><div class="section"><b>Plano</b><ul id="plan"></ul></div><div class="section"><b>Concluído</b><ul id="completed"></ul></div><div class="section"><b>Erros</b><ul id="errors"></ul></div></div>
 </div></main>
 <script>
-const btn=document.querySelector('#run'),resumeBtn=document.querySelector('#resume'),mission=document.querySelector('#mission'),status=document.querySelector('#status'),result=document.querySelector('#result'),waiting=document.querySelector('#waiting');
+const btn=document.querySelector('#run'),bg=document.querySelector('#background'),resumeBtn=document.querySelector('#resume'),mission=document.querySelector('#mission'),status=document.querySelector('#status'),result=document.querySelector('#result'),waiting=document.querySelector('#waiting');
 function esc(x){return String(x).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;')}
 function list(el,items){el.innerHTML=(items||[]).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>Nenhum</li>'}
 function render(d){
+ const jobs=d.jobs||[];
+ document.querySelector('#jobs').innerHTML=jobs.length?jobs.slice().reverse().map(j=>`<div class="task"><span><b>${esc(j.status)}</b> — ${esc(j.id)}</span><span>${j.status==='pending'?'<button onclick="cancelJob(\\''+esc(j.id)+'\\')">Cancelar</button>':j.status==='failed'?'<button onclick="retryJob(\\''+esc(j.id)+'\\')">Tentar novamente</button>':''}</span></div>`).join(''):'<div>Nenhum trabalho em fila</div>';
  status.textContent=d.status==='waiting_for_approval'?'Aguardando sua aprovação.':d.status==='completed'?'Construção concluída.':'Status: '+d.status;
  const entries=Object.entries(d.task_statuses||{});document.querySelector('#tasks').innerHTML=entries.map(([id,s])=>`<div class="task"><span>${esc(id)}</span><span>${esc(s)}</span></div>`).join('')||'<div>Nenhuma tarefa</div>';
  list(document.querySelector('#plan'),d.plan);list(document.querySelector('#completed'),d.completed);list(document.querySelector('#errors'),d.errors);result.style.display='block';
  if(d.status==='waiting_for_approval'){const a=(d.approvals||[])[0];waiting.style.display='block';waiting.innerHTML=a?`<b>Aprovação necessária:</b> ${esc(a.action)}<br>${esc(a.reason)}<br><button onclick="approve('${esc(a.id)}')">Aprovar e continuar</button>`:'A aprovação está pendente.';resumeBtn.style.display='inline-block'}else{waiting.style.display='none';resumeBtn.style.display='none'}
 }
-async function call(path){const m=mission.value.trim();if(!m)return;btn.disabled=true;resumeBtn.disabled=true;status.textContent='Agente trabalhando...';try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mission:m})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Erro');render(d)}catch(e){status.textContent='Erro: '+e.message}finally{btn.disabled=false;resumeBtn.disabled=false}}
-btn.onclick=()=>call('/run');resumeBtn.onclick=()=>call('/resume');
+async function call(path){const m=mission.value.trim();if(!m)return;btn.disabled=true;bg.disabled=true;resumeBtn.disabled=true;status.textContent='Agente trabalhando...';try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mission:m})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Erro');render(d)}catch(e){status.textContent='Erro: '+e.message}finally{btn.disabled=false;bg.disabled=false;resumeBtn.disabled=false}}
+btn.onclick=()=>call('/run');bg.onclick=async()=>{const m=mission.value.trim();if(!m)return;bg.disabled=true;try{const r=await fetch('/run/background',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mission:m})});const d=await r.json();if(!r.ok)throw Error(d.error||'Erro');status.textContent='Missão colocada na fila. O agente pode continuar trabalhando em segundo plano.';poll()}catch(e){status.textContent='Erro: '+e.message}finally{bg.disabled=false}};resumeBtn.onclick=()=>call('/resume');
+async function retryJob(id){await fetch('/jobs/retry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});poll()}
+async function cancelJob(id){await fetch('/jobs/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});poll()}
+async function poll(){try{const r=await fetch('/status');if(r.ok)render(await r.json())}catch(e){}}
+setInterval(poll,2000);
 async function approve(id){try{const r=await fetch('/approval/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,approved:true})});if(!r.ok)throw new Error('Não foi possível aprovar');await call('/resume')}catch(e){status.textContent='Erro: '+e.message}}
 </script></body></html>
