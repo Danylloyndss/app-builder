@@ -7,6 +7,40 @@ from .approvals import ApprovalStore
 from .manager import Manager
 from .timepro_api import TimeProService, TimeProValidationError
 WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; TIMEPRO_SW=ROOT/"static"/"timepro-sw.js"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
+
+def _job_store_path():
+    p=Path(WORKSPACE)/".app-builder"/"jobs.json"; p.parent.mkdir(parents=True,exist_ok=True); return p
+
+def _load_jobs():
+    p=_job_store_path()
+    if not p.exists(): return []
+    try: return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError): return []
+
+def _save_jobs(jobs):
+    p=_job_store_path(); tmp=p.with_suffix(".tmp"); tmp.write_text(json.dumps(jobs,indent=2,ensure_ascii=False),encoding="utf-8"); tmp.replace(p)
+
+def _enqueue_job(mission,resume=False):
+    from datetime import datetime,timezone
+    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":""}; jobs.append(job); _save_jobs(jobs); return job
+
+def _run_pending_jobs():
+    if not RUN_LOCK.acquire(blocking=False): return
+    from datetime import datetime,timezone
+    try:
+        while True:
+            jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
+            if not job: return
+            job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+            try:
+                Manager(workspace=WORKSPACE).run(job["mission"],resume=bool(job.get("resume")))
+                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="completed"; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+            except Exception as exc:
+                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="failed"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+    finally: RUN_LOCK.release()
+
+def _start_job_worker(): threading.Thread(target=_run_pending_jobs,name="app-builder-job-worker",daemon=True).start()
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self,status,payload):
         body=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
@@ -58,15 +92,8 @@ class Handler(BaseHTTPRequestHandler):
     def _authorized(self):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
     def _start_background(self, mission, resume=False):
-        def worker():
-            if not RUN_LOCK.acquire(blocking=False):
-                return
-            try:
-                Manager(workspace=WORKSPACE).run(mission, resume=resume)
-            finally:
-                RUN_LOCK.release()
-        threading.Thread(target=worker, name="app-builder-worker", daemon=True).start()
-    def _status_payload(self,memory): return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"approvals":APPROVALS.list_pending()}
+        job=_enqueue_job(mission,resume); _start_job_worker(); return job
+    def _status_payload(self,memory): return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"approvals":APPROVALS.list_pending(),"jobs":_load_jobs()[-20:]}
     def _artifact_files(self):
         root=Path(WORKSPACE); return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts) if root.exists() else []
     def _artifact_zip(self):
@@ -107,7 +134,11 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=="/api/timepro/timesheets": self._send(201,{"timesheet":TIMEPRO.create_timesheet(data)}); return
             if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64", ""))}); return
             if parsed.path=="/api/timepro/signature": TIMEPRO.save_signature(data.get("timesheet_id"),data.get("content_base64","")); self._send(201,{"saved":True}); return
-            if parsed.path in ("/run","/resume","/run/background","/resume/background"):
+            if parsed.path in ("/run/background","/resume/background"):
+                mission=str(data.get("mission","")).strip()
+                if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
+                job=self._start_background(mission,resume=parsed.path=="/resume/background"); self._send(202,{"status":"queued","background":True,"job":job}); return
+            if parsed.path in ("/run","/resume"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
                 if not RUN_LOCK.acquire(blocking=False): self._send(409,{"error":"another build is already running"}); return
@@ -158,5 +189,5 @@ class Handler(BaseHTTPRequestHandler):
         except TimeProValidationError as exc: self._send(422,{"error":str(exc)})
     def log_message(self,format,*args): return
 def serve():
-    port=int(os.environ.get("PORT","8080")); server=ThreadingHTTPServer(("0.0.0.0",port),Handler); print(f"App Builder V1 listening on {port}"); server.serve_forever()
+    _start_job_worker(); port=int(os.environ.get("PORT","8080")); server=ThreadingHTTPServer(("0.0.0.0",port),Handler); print(f"App Builder V1 listening on {port}"); server.serve_forever()
 if __name__=="__main__": serve()
