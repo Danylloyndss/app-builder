@@ -118,6 +118,176 @@ class BuildEngine:
         return "Generic persistent backend generated"
 
     @staticmethod
+    def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
+        schema = schema or {"entity": "ApplicationRecord", "fields": ["id"], "business_rules": []}
+        schema_json = json.dumps(schema, ensure_ascii=False)
+        source = """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+import sqlite3
+from urllib.parse import parse_qs, urlparse
+
+DB = os.environ.get("APP_DB", "app.db")
+HOST = os.environ.get("APP_HOST", "127.0.0.1")
+PORT = int(os.environ.get("APP_PORT", "8001"))
+SCHEMA = json.loads(__SCHEMA__)
+
+def init_db():
+    with sqlite3.connect(DB) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+def payload(row):
+    return {"id": row[0], **json.loads(row[1]), "created_at": row[2]}
+
+def validate(data):
+    if not isinstance(data, dict):
+        raise ValueError("payload must be an object")
+    fields = [str(x) for x in SCHEMA.get("fields", []) if str(x) and str(x) != "id"]
+    unknown = [key for key in data if key not in fields]
+    if unknown:
+        raise ValueError("unknown fields: " + ", ".join(sorted(unknown)))
+    rules = [str(x).lower() for x in SCHEMA.get("business_rules", [])]
+    if any("break" in rule and "zero" in rule for rule in rules):
+        for key in ("break", "pause", "pause_minutes"):
+            if key in data and int(data[key]) < 0:
+                raise ValueError("break must be zero or positive")
+    return data
+
+def save(data, record_id=None):
+    encoded = json.dumps(data, ensure_ascii=False)
+    with sqlite3.connect(DB) as db:
+        if record_id is None:
+            cur = db.execute("INSERT INTO records (data) VALUES (?)", (encoded,))
+            record_id = cur.lastrowid
+        else:
+            changed = db.execute("UPDATE records SET data=? WHERE id=?", (encoded, record_id)).rowcount
+            if not changed:
+                return None
+        return db.execute("SELECT id, data, created_at FROM records WHERE id=?", (record_id,)).fetchone()
+
+class Handler(BaseHTTPRequestHandler):
+    def send_json(self, status, value):
+        raw = json.dumps(value, ensure_ascii=False).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > 1000000:
+            raise ValueError("request too large")
+        return json.loads(self.rfile.read(length) or b"{}")
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path == "/health":
+            return self.send_json(200, {"ok": True, "entity": SCHEMA.get("entity")})
+        if path == "/api/records":
+            with sqlite3.connect(DB) as db:
+                rows = db.execute("SELECT id, data, created_at FROM records ORDER BY id DESC").fetchall()
+            return self.send_json(200, [payload(row) for row in rows])
+        return self.send_json(404, {"error": "not found"})
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/records":
+            return self.send_json(404, {"error": "not found"})
+        try:
+            row = save(validate(self.read_json()))
+            return self.send_json(201, payload(row))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
+
+    def do_PUT(self):
+        if urlparse(self.path).path != "/api/records":
+            return self.send_json(404, {"error": "not found"})
+        try:
+            data = validate(self.read_json())
+            record_id = int(data.pop("id", parse_qs(urlparse(self.path).query).get("id", ["0"])[0]))
+            if record_id <= 0:
+                return self.send_json(400, {"error": "id is required"})
+            row = save(data, record_id)
+            return self.send_json(200, payload(row)) if row else self.send_json(404, {"error": "not found"})
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/records":
+            return self.send_json(404, {"error": "not found"})
+        try:
+            record_id = int(parse_qs(parsed.query).get("id", ["0"])[0])
+            with sqlite3.connect(DB) as db:
+                changed = db.execute("DELETE FROM records WHERE id=?", (record_id,)).rowcount
+            return self.send_json(200, {"deleted": True}) if changed else self.send_json(404, {"error": "not found"})
+        except ValueError:
+            return self.send_json(400, {"error": "id is required"})
+
+if __name__ == "__main__":
+    init_db()
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+"""
+        return source.replace("__SCHEMA__", repr(schema_json))
+
+    @staticmethod
+    def _generic_backend_test() -> str:
+        return '''import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+root = Path(__file__).resolve().parents[1]
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+def call(url, method="GET", payload=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = Request(url, data=data, method=method, headers={"Content-Type": "application/json"} if data else {})
+    with urlopen(req, timeout=4) as response:
+        return json.load(response)
+
+with tempfile.TemporaryDirectory() as tmp:
+    port = str(free_port())
+    env = dict(os.environ, APP_PORT=port, APP_DB=str(Path(tmp) / "app.db"))
+    process = subprocess.Popen([sys.executable, str(root / "backend.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        base = "http://127.0.0.1:" + port
+        for _ in range(20):
+            try:
+                assert call(base + "/health")["ok"] is True
+                break
+            except Exception:
+                time.sleep(0.05)
+        created = call(base + "/api/records", "POST", {"date": "2026-01-02", "location": "Test", "note": "ok"})
+        assert created["id"] > 0
+        rows = call(base + "/api/records")
+        assert rows and rows[0]["location"] == "Test"
+        record_id = created["id"]
+        updated = call(base + "/api/records?id=" + str(record_id), "PUT", {"id": record_id, "date": "2026-01-03", "location": "Updated", "note": "changed"})
+        assert updated["location"] == "Updated"
+        try:
+            call(base + "/api/records", "POST", {"unexpected": True})
+            raise AssertionError("unknown field accepted")
+        except HTTPError as exc:
+            assert exc.code == 400
+        deleted = call(base + "/api/records?id=" + str(record_id), "DELETE")
+        assert deleted["deleted"] is True
+        assert call(base + "/api/records") == []
+    finally:
+        process.terminate()
+        process.wait(timeout=3)
+
+    @staticmethod
     def _timepro_integration_test() -> str:
         return '''import json
 import os
@@ -162,7 +332,8 @@ with tempfile.TemporaryDirectory() as tmp:
         process.terminate()
         process.wait(timeout=3)
         os.chdir(previous)
-'''        return source.replace("__SCHEMA__", repr(schema_json))
+'''
+        return source.replace("__SCHEMA__", repr(schema_json))
 
     @staticmethod
     def _timepro_backend() -> str:
