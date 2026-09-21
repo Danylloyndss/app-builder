@@ -195,8 +195,8 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=="/jobs/retry":
                 job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
                 if not job: self._send(404,{"error":"job not found"}); return
-                if job.get("status") not in ("failed","completed"): self._send(409,{"error":"job is not retryable"}); return
-                job["status"]="pending"; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; _save_jobs(jobs); _start_job_worker(); self._send(202,{"status":"queued","job":job}); return
+                if job.get("status") not in ("failed","completed","cancelled"): self._send(409,{"error":"job is not retryable"}); return
+                job["status"]="pending"; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; job["cancel_requested"]=False; _save_jobs(jobs); _start_job_worker(); self._send(202,{"status":"queued","job":job}); return
             if parsed.path=="/jobs/cancel":
                 job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
                 if not job: self._send(404,{"error":"job not found"}); return
