@@ -55,7 +55,11 @@ def _run_pending_jobs():
             jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
             if not job:
                 return
-            job["status"]="running"; job["cancel_requested"]=False; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; job["error"]=""; _save_jobs(jobs)
+            job["status"]="running"; job["cancel_requested"]=False; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; job["error"]=""
+            job["diagnostics"]=dict(job.get("diagnostics") or {})
+            job["diagnostics"]["worker_attempt"]=job["attempts"]
+            job["diagnostics"]["worker_started_at"]=job["started_at"]
+            _save_jobs(jobs)
             _job_event(job,"started",job.get("mission","")[:160])
             try:
                 def progress(memory, state):
