@@ -218,12 +218,14 @@ class Handler(BaseHTTPRequestHandler):
                 job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
                 if not job: self._send(404,{"error":"job not found"}); return
                 if job.get("status") not in ("failed","completed","cancelled"): self._send(409,{"error":"job is not retryable"}); return
-                job["status"]="pending"; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; job["cancel_requested"]=False; _save_jobs(jobs); _start_job_worker(); self._send(202,{"status":"queued","job":job}); return
+                job["status"]="pending"; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; job["cancel_requested"]=False; job["result_status"]="retry_queued"; job["last_heartbeat_at"]=None
+                job["events"]=(job.get("events") or [])[-50:]
+                _save_jobs(jobs); _job_event(job,"retry_queued","Retry requested"); _start_job_worker(); self._send(202,{"status":"queued","job":job}); return
             if parsed.path=="/jobs/cancel":
                 job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
                 if not job: self._send(404,{"error":"job not found"}); return
                 if job.get("status")=="pending":
-                    job["status"]="cancelled"; job["finished_at"]=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+                    job["status"]="cancelled"; job["result_status"]="cancelled"; job["finished_at"]=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
                 elif job.get("status")=="running":
                     job["cancel_requested"]=True
                 else:
