@@ -51,7 +51,12 @@ class TaskBuilder:
                 previous = task_id
 
         tasks.append(BuildTask("implement", "Implement requested functionality", "build", [previous], "medium"))
-        tasks.append(BuildTask("test", "Run tests", "test", ["implement"], "medium",
+        if "data storage" in features:
+            tasks.append(BuildTask("backend_contract", "Validate backend and persistence contract", "storage", ["implement"], "medium", ["Persistence boundary is explicitly defined"]))
+            backend_previous = "backend_contract"
+        else:
+            backend_previous = "implement"
+        tasks.append(BuildTask("test", "Run tests", "test", [backend_previous], "medium",
                                acceptance=list(spec.acceptance_criteria)))
         tasks.append(BuildTask("repair", "Fix errors and retest", "repair", ["test"], "medium"))
         tasks.append(BuildTask("security", "Run security review", "security", ["repair"], "high",
