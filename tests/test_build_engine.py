@@ -70,8 +70,8 @@ class BuildEngineTests(unittest.TestCase):
             manifest = json.loads((Path(temp_dir) / ".app-builder" / "backend.json").read_text(encoding="utf-8"))
             contract = json.loads((Path(temp_dir) / "api_contract.json").read_text(encoding="utf-8"))
 
-            self.assertIn("ApplicationRecord", schema["entities"])
-            self.assertIn("date", schema["fields"])
+            self.assertIn("Client", schema["entities"])
+            self.assertIn("name", schema["entity_fields"]["Client"])
             self.assertEqual(manifest["schema"], ".app-builder/backend_schema.json")
             self.assertEqual(contract["resources"]["records"]["fields"], schema["fields"])
             self.assertEqual(contract["primary_entity"], schema["entity"])
@@ -86,9 +86,14 @@ class BuildEngineTests(unittest.TestCase):
             self.assertEqual(integration.returncode, 0, integration.stderr or integration.stdout)
             backend = (Path(temp_dir) / "backend.py").read_text(encoding="utf-8")
             self.assertIn("SCHEMA", backend)
-            self.assertIn("ApplicationRecord", backend)
-            self.assertIn("entity_records", backend)
+            self.assertIn("Client", backend)
+            self.assertIn("/api/", backend)
             self.assertIn("idx_entity_records_entity", backend)
+            self.assertEqual(contract["version"], 3)
+            self.assertEqual(contract["primary_resource"], "client")
+            self.assertEqual(contract["resources"]["client"]["GET"], "/api/client")
+            self.assertEqual(contract["resources"]["client"]["POST"], "/api/client")
+            self.assertEqual(contract["compatibility"]["records"], "/api/records")
 
 
 if __name__ == "__main__":
