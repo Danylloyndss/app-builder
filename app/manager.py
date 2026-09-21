@@ -187,6 +187,12 @@ class Manager:
             report = json.loads(report_path.read_text(encoding="utf-8"))
             expected = report.get("artifacts") or {}
         except (OSError, ValueError, TypeError):
+            self.memory.diagnostics["artifact_integrity"] = "unreadable"
+            self.memory.record("artifact_integrity_failed", mismatches=[".app-builder/build_report.json"])
+            for task in tasks:
+                if task.kind in {"build", "authentication", "storage", "ui", "logic", "test", "repair", "security", "acceptance"}:
+                    task.status = "pending"
+                    self.memory.task_statuses[task.id] = "pending"
             return False
         mismatches = []
         for relative, digest in expected.items():
@@ -219,7 +225,13 @@ class Manager:
             tasks = self._load_tasks(); self.memory.record("mission_resumed", current_task=self.memory.current_task)
             self._validate_build_integrity(tasks)
             for task in tasks:
-                if self.memory.task_statuses.get(task.id) == "waiting_for_approval" and self.approvals.approved_for(task.title): self.memory.task_statuses[task.id] = "pending"; task.status = "pending"
+                if self.memory.task_statuses.get(task.id) != "waiting_for_approval":
+                    continue
+                approval_id = self.memory.diagnostics.get("approval_id") if self.memory.diagnostics.get("approval_task_id") == task.id else None
+                approved = self.approvals.approved_for(task.title, approval_id)
+                if approved:
+                    self.memory.task_statuses[task.id] = "pending"
+                    task.status = "pending"
             self._save_tasks(tasks); self.memory.save(self.memory_path)
         while True:
             task = self._find_next_task(tasks)
@@ -251,6 +263,10 @@ class Manager:
             self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
             quality_ok = self._run_quality_gate()
         self.memory.current_task=""
+        if quality_ok:
+            self.memory.diagnostics["active_task_id"] = ""
+            self.memory.diagnostics["active_task"] = ""
+            self.memory.diagnostics["resume_eligible"] = False
         self.memory.status="completed" if quality_ok and not self.memory.errors else "completed_with_errors"
         artifact_root = self.workspace / ".app-builder"
         artifact_root.mkdir(parents=True, exist_ok=True)
