@@ -50,9 +50,14 @@ class TimeProService:
         return employee, company, work_date, location, start_time, pause, end_time, note
 
     def create_timesheet(self, payload: dict) -> dict:
+        key = str(payload.get("idempotency_key", "")).strip()
+        if len(key) > 120: raise TimeProValidationError("idempotency_key is too long")
+        if key:
+            existing = self.db.fetch_one("SELECT * FROM timesheets WHERE idempotency_key=?", (key,))
+            if existing: return existing
         employee, company, work_date, location, start_time, pause, end_time, note = self._validate_payload(payload)
         total = calculate_total(start_time, end_time, pause)
-        self.db.execute("INSERT INTO timesheets (employee, company, work_date, location, start_time, pause_minutes, end_time, total_minutes, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",(employee,company,work_date,location,start_time,pause,end_time,total,note))
+        self.db.execute("INSERT INTO timesheets (employee, company, work_date, location, start_time, pause_minutes, end_time, total_minutes, note, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",(employee,company,work_date,location,start_time,pause,end_time,total,note,key))
         return self.db.fetch_one("SELECT * FROM timesheets WHERE id = last_insert_rowid()") or {}
 
     def update_timesheet(self, timesheet_id: int, payload: dict) -> dict:
