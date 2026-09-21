@@ -174,16 +174,45 @@ def fields_for(entity):
         values = SCHEMA.get("fields", ["id"])
     return [str(value) for value in values]
 
+def field_definitions_for(entity):
+    values = (SCHEMA.get("field_definitions") or {}).get(entity)
+    if isinstance(values, list):
+        return {str(item.get("name")): item for item in values if isinstance(item, dict) and item.get("name")}
+    return {name: {"name": name, "type": "text", "required": False} for name in fields_for(entity)}
+
 def payload(row):
     return {"id": row[0], **json.loads(row[1]), "created_at": row[2], "_entity": row[3]}
 
 def validate(data, entity):
     if not isinstance(data, dict):
         raise ValueError("payload must be an object")
+    definitions = field_definitions_for(entity)
     fields = [field for field in fields_for(entity) if field != "id"]
     unknown = [key for key in data if key not in fields]
     if unknown:
         raise ValueError("unknown fields: " + ", ".join(sorted(unknown)))
+    for name, definition in definitions.items():
+        if name == "id" or not definition.get("required"):
+            continue
+        if data.get(name) in (None, ""):
+            raise ValueError(name + " is required")
+    for name, definition in definitions.items():
+        if name not in data or data[name] in (None, ""):
+            continue
+        value = data[name]
+        kind = definition.get("type")
+        if kind == "number":
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                raise ValueError(name + " must be a number")
+        elif kind == "integer":
+            try:
+                int(value)
+            except (TypeError, ValueError):
+                raise ValueError(name + " must be an integer")
+        elif kind == "email" and "@" not in str(value):
+            raise ValueError(name + " must be an email")
     rules = [str(rule).lower() for rule in SCHEMA.get("business_rules", [])]
     for rule in rules:
         if "zero or positive" in rule or "non-negative" in rule:
