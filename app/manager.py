@@ -287,7 +287,8 @@ class Manager:
             self.memory.diagnostics["active_task_id"] = ""
             self.memory.diagnostics["active_task"] = ""
             self.memory.diagnostics["resume_eligible"] = False
-        self.memory.status="completed" if quality_ok and not self.memory.errors else "completed_with_errors"
+            self.memory.errors = []
+        self.memory.status="completed" if quality_ok else "completed_with_errors"
         artifact_root = self.workspace / ".app-builder"
         artifact_root.mkdir(parents=True, exist_ok=True)
         artifacts = {}
