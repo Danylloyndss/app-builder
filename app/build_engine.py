@@ -411,7 +411,7 @@ if __name__ == "__main__":
         entity_fields = spec.get("entity_fields", {})
         inferred = entity_fields.get(entity, []) if isinstance(entity_fields, dict) else []
         fields.extend(str(x) for x in inferred if str(x).strip() and str(x) != "id")
-                return {
+        return {
             "version": 3,
             "resource": "records",
             "entity": entity,
