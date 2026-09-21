@@ -438,7 +438,10 @@ def total(start, end, pause):
     return value
 
 def row_payload(row):
-    return dict(row)
+    if row is None:
+        return None
+    columns = ("id", "employee", "company", "work_date", "location", "start_time", "pause_minutes", "end_time", "total_minutes", "note", "created_at")
+    return dict(zip(columns, row))
 
 def create(payload):
     required = ("employee", "work_date", "start_time", "end_time")
