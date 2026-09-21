@@ -22,7 +22,7 @@ def _save_jobs(jobs):
 
 def _enqueue_job(mission,resume=False):
     from datetime import datetime,timezone
-    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":"","completed_count":0,"error_count":0,"cancel_requested":False,"events":[]}; jobs.append(job); _save_jobs(jobs); return job
+    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":"","completed_count":0,"error_count":0,"cancel_requested":False,"events":[],"last_heartbeat_at":None}; jobs.append(job); _save_jobs(jobs); return job
 
 def _job_event(job, event, detail=""):
     jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job.get("id")),None)
@@ -30,6 +30,7 @@ def _job_event(job, event, detail=""):
     events=current.setdefault("events",[])
     events.append({"event":event,"detail":detail})
     current["events"]=events[-100:]
+    current["last_heartbeat_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
     _save_jobs(jobs)
 
 def _run_pending_jobs():
@@ -50,7 +51,7 @@ def _run_pending_jobs():
             jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
             if not job:
                 return
-            job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; job["error"]=""; _save_jobs(jobs)
+            job["status"]="running"; job["cancel_requested"]=False; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; job["error"]=""; _save_jobs(jobs)
             _job_event(job,"started",job.get("mission","")[:160])
             try:
                 def progress(memory, state):
@@ -223,9 +224,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not action or not reason: self._send(400,{"error":"action and reason are required"}); return
                 request=APPROVALS.create(action,reason); self._send(201,{"approval":request.__dict__}); return
             if parsed.path=="/approval/decision":
-                result=APPROVALS.decide(str(data.get("id","")),bool(data.get("approved",False)))
+                approval_id=str(data.get("id",""))
+                result=APPROVALS.decide(approval_id,bool(data.get("approved",False)))
                 if result is None: self._send(404,{"error":"approval not found"}); return
-                self._send(200,{"approval":result}); return
+                if result.approved:
+                    jobs=_load_jobs()
+                    resumed=False
+                    for job in jobs:
+                        if job.get("status")=="waiting_for_approval" and job.get("approval_id")==approval_id:
+                            job["status"]="pending"; job["resume"]=True; job["error"]=""; job["started_at"]=None; job["finished_at"]=None; resumed=True
+                    if resumed:
+                        _save_jobs(jobs); _start_job_worker()
+                self._send(200,{"approval":result,"resumed":resumed}); return
             self._send(404,{"error":"not found"})
         except json.JSONDecodeError: self._send(400,{"error":"invalid JSON"})
         except TimeProValidationError as exc: self._send(422,{"error":str(exc)})
