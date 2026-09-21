@@ -40,7 +40,16 @@ def _run_pending_jobs():
                 return
             job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; _save_jobs(jobs)
             try:
-                memory=Manager(workspace=WORKSPACE).run(job["mission"],resume=bool(job.get("resume")))
+                def progress(memory, state):
+                    jobs_now=_load_jobs()
+                    current_now=next((j for j in jobs_now if j.get("id")==job["id"]),None)
+                    if current_now:
+                        current_now["current_task"]=memory.current_task
+                        current_now["result_status"]=state
+                        current_now["completed_count"]=len(memory.completed)
+                        current_now["error_count"]=len(memory.errors)
+                        _save_jobs(jobs_now)
+                memory=Manager(workspace=WORKSPACE, progress_callback=progress).run(job["mission"],resume=bool(job.get("resume")))
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="completed"; current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
             except Exception as exc:
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="failed"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
