@@ -91,10 +91,40 @@ class BuildEngine:
         if not self.is_timepro(mission):
             return "Backend contract validation skipped: mission has no persistent backend requirement"
         self.project.write_file("backend.py", self._timepro_backend())
+        self.project.write_file("tests/test_backend_integration.py", self._timepro_integration_test())
         self.project.write_file("api_contract.json", self._timepro_api_contract())
         return "TimePro backend persistence service generated"
 
     @staticmethod
+    @staticmethod
+    def _timepro_integration_test() -> str:
+        return '''import json
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+root = Path(__file__).resolve().parents[1]
+with tempfile.TemporaryDirectory() as tmp:
+    import os
+    previous = os.getcwd(); os.chdir(tmp)
+    try:
+        process = subprocess.Popen([sys.executable, str(root / "backend.py")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            time.sleep(0.3)
+            payload = json.dumps({"employee":"Integration Test","company":"TimePro","work_date":"2026-01-02","location":"Test","start_time":"08:00","pause_minutes":30,"end_time":"17:00"}).encode()
+            req = Request("http://127.0.0.1:8001/api/timepro/timesheets", data=payload, headers={"Content-Type":"application/json"})
+            created = json.load(urlopen(req, timeout=3))
+            assert created["total_minutes"] == 510
+            rows = json.load(urlopen("http://127.0.0.1:8001/api/timepro/timesheets", timeout=3))
+            assert rows and rows[0]["employee"] == "Integration Test"
+        finally:
+            process.terminate(); process.wait(timeout=3)
+    finally:
+        os.chdir(previous)
+'''
     def _timepro_backend() -> str:
         return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
