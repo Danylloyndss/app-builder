@@ -413,12 +413,16 @@ if __name__ == "__main__":
         if any(x in lower for x in ("hour", "hours", "hora", "horas", "time", "tempo")): fields += ["start", "end", "break"]
         if any(x in lower for x in ("name", "nome", "employee", "cliente", "client")): fields += ["name"]
         rules = [str(x) for x in spec.get("business_rules", []) if str(x).strip()]
-        return {
-            "version": 2,
+        entity_fields = spec.get("entity_fields", {})
+        inferred = entity_fields.get(entity, []) if isinstance(entity_fields, dict) else []
+        fields.extend(str(x) for x in inferred if str(x).strip() and str(x) != "id")
+                return {
+            "version": 3,
             "resource": "records",
             "entity": entity,
             "entities": entities or [entity],
             "fields": list(dict.fromkeys(fields)),
+            "entity_fields": entity_fields if isinstance(entity_fields, dict) else {},
             "business_rules": rules,
             "integrations": list(spec.get("integrations", [])),
             "persistence": {"required": True, "adapter": "sqlite"},
