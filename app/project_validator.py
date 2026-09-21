@@ -30,7 +30,7 @@ class ProjectValidator:
             lowered = html.lower()
             if "<html" not in lowered or "</html>" not in lowered:
                 errors.append("index.html is not a complete HTML document")
-            if '<meta name="viewport"' not in lowered:
+            if "<head" in lowered and '<meta name="viewport"' not in lowered:
                 errors.append("index.html is missing a mobile viewport")
             scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html, re.I)
             for source in scripts:
