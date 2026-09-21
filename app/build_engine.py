@@ -463,23 +463,63 @@ if __name__ == "__main__":
                 spec = json.loads(spec_path.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError):
                 spec = {}
+
         entities = [str(x) for x in spec.get("data_entities", []) if str(x).strip()]
+        if not entities:
+            catalog = {
+                "expense": "Expense", "expenses": "Expense",
+                "client": "Client", "clients": "Client",
+                "customer": "Customer", "customers": "Customer",
+                "product": "Product", "products": "Product",
+                "order": "Order", "orders": "Order",
+                "employee": "Employee", "employees": "Employee",
+                "appointment": "Appointment", "appointments": "Appointment",
+                "task": "Task", "tasks": "Task",
+                "project": "Project", "projects": "Project",
+                "invoice": "Invoice", "invoices": "Invoice",
+            }
+            entities = []
+            for keyword, candidate in catalog.items():
+                if keyword in lower and candidate not in entities:
+                    entities.append(candidate)
         entity = entities[0] if entities else "ApplicationRecord"
+
         fields = ["id"]
-        if any(x in lower for x in ("form", "cadastro")): fields += ["date", "location", "note"]
-        if any(x in lower for x in ("hour", "hours", "hora", "horas", "time", "tempo")): fields += ["start", "end", "break"]
-        if any(x in lower for x in ("name", "nome", "employee", "cliente", "client")): fields += ["name"]
+        if any(x in lower for x in ("form", "cadastro")):
+            fields += ["date", "location", "note"]
+        if any(x in lower for x in ("hour", "hours", "hora", "horas", "time", "tempo")):
+            fields += ["start", "end", "break"]
+        if any(x in lower for x in ("name", "nome", "employee", "cliente", "client")):
+            fields += ["name"]
+
         rules = [str(x) for x in spec.get("business_rules", []) if str(x).strip()]
+        catalog_fields = {
+            "Expense": ["id", "date", "amount", "description", "category"],
+            "Client": ["id", "name", "email", "phone", "note"],
+            "Customer": ["id", "name", "email", "phone", "note"],
+            "Product": ["id", "name", "price", "sku", "description"],
+            "Order": ["id", "date", "customer_id", "total", "status"],
+            "Employee": ["id", "name", "email", "role"],
+            "Appointment": ["id", "date", "time", "client_id", "note"],
+            "Task": ["id", "title", "description", "status", "due_date"],
+            "Project": ["id", "name", "description", "status", "due_date"],
+            "Invoice": ["id", "number", "date", "client_id", "amount", "status"],
+            "ApplicationRecord": ["id", "date", "location", "note"],
+        }
         entity_fields = spec.get("entity_fields", {})
-        inferred = entity_fields.get(entity, []) if isinstance(entity_fields, dict) else []
-        fields.extend(str(x) for x in inferred if str(x).strip() and str(x) != "id")
-                return {
+        if not isinstance(entity_fields, dict):
+            entity_fields = {}
+        for detected in entities:
+            entity_fields.setdefault(detected, list(catalog_fields.get(detected, ["id", "name", "note"])))
+        entity_fields.setdefault(entity, list(catalog_fields.get(entity, fields)))
+        primary_fields = entity_fields.get(entity, fields)
+        return {
             "version": 3,
             "resource": "records",
             "entity": entity,
             "entities": entities or [entity],
-            "fields": list(dict.fromkeys(fields)),
-            "entity_fields": entity_fields if isinstance(entity_fields, dict) else {},
+            "fields": list(dict.fromkeys(primary_fields)),
+            "entity_fields": entity_fields,
             "business_rules": rules,
             "integrations": list(spec.get("integrations", [])),
             "persistence": {"required": True, "adapter": "sqlite"},
