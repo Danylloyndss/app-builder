@@ -505,7 +505,7 @@ if __name__ == "__main__":
         primary_resource = re.sub(r"(?<!^)(?=[A-Z])", "_", str(primary)).lower().replace("_", "-")
         resources["records"] = {
             "entity": primary,
-            "fields": fields_by_entity.get(primary, schema.get("fields", ["id"])),
+            "fields": schema.get("fields", ["id"]),
             "GET": "/api/records",
             "POST": "/api/records",
             "PUT": "/api/records?id={id}",
