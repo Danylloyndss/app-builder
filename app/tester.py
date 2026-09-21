@@ -127,6 +127,23 @@ class Tester:
                 cancel_check=cancel_check,
             )
             if code != 0:
+                # Some generated integration checks are executable test scripts
+                # rather than unittest.TestCase classes. unittest reports those
+                # as "NO TESTS RAN" even though importing the module executes the
+                # integration assertions. Run those scripts directly as a safe
+                # fallback, while still failing ordinary test-suite errors.
+                if "NO TESTS RAN" in output:
+                    scripts = sorted(tests_dir.glob("test*.py"))
+                    if scripts:
+                        for script in scripts:
+                            script_code, script_output = self.executor.run_command(
+                                ["python", str(script.relative_to(workspace))],
+                                workspace,
+                                cancel_check=cancel_check,
+                            )
+                            if script_code != 0:
+                                return False, f"Generated integration test failed: {script.name}: {script_output[-2000:]}"
+                        return True, "Generated project passed structural and executable integration tests"
                 return False, f"Project tests failed: {output[-2000:]}"
 
         return True, "Generated project passed structural and functional tests"
