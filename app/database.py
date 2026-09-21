@@ -80,10 +80,12 @@ CREATE TABLE IF NOT EXISTS timesheet_attachments (
     filename TEXT NOT NULL,
     stored_path TEXT NOT NULL,
     mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    client_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(timesheet_id) REFERENCES timesheets(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_timesheet_attachments_timesheet ON timesheet_attachments(timesheet_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_timesheet_attachment_client ON timesheet_attachments(client_id) WHERE client_id <> '';
 
 CREATE TABLE IF NOT EXISTS timesheet_signatures (
     timesheet_id INTEGER PRIMARY KEY,
