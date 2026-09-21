@@ -152,7 +152,15 @@ class Handler(BaseHTTPRequestHandler):
             else: item["heartbeat_age_seconds"]=None
             events=item.get("events") or []
             item["last_event"]=events[-1] if events else None
-            item["phase"]="approval" if item.get("status")=="waiting_for_approval" else ("stopped" if item.get("status") in {"failed","cancelled","completed"} else "building")
+            status=item.get("status")
+            if status=="waiting_for_approval":
+                item["phase"]="approval"
+            elif status in {"failed","cancelled","completed"}:
+                item["phase"]="stopped"
+            elif status=="pending":
+                item["phase"]="queued"
+            else:
+                item["phase"]="building"
             enriched.append(item)
         return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"diagnostics":dict(memory.diagnostics),"approvals":APPROVALS.list_pending(),"jobs":enriched}
     def _artifact_files(self):
