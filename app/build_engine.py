@@ -501,7 +501,8 @@ class Handler(BaseHTTPRequestHandler):
         if path != "/api/timepro/timesheets": return self.send_json(404, {"error": "not found"})
         try:
             payload = self.read_json()
-            record_id = int(payload.pop("id", 0))
+            query_id = urlparse(self.path).query.split("=", 1)[1] if "=" in urlparse(self.path).query else "0"
+            record_id = int(payload.pop("id", query_id))
             if record_id <= 0: return self.send_json(400, {"error": "id is required"})
             updated = update(record_id, payload)
             return self.send_json(200, row_payload(updated)) if updated else self.send_json(404, {"error": "not found"})
