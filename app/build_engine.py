@@ -88,13 +88,30 @@ class BuildEngine:
         return f"Implemented generated app: {title} ({len(features)} features)"
 
     def implement_backend(self, mission: str) -> str:
-        if not self.is_timepro(mission):
-            return "Backend contract validation skipped: mission has no persistent backend requirement"
-        self.project.write_file("backend.py", self._timepro_backend())
-        self.project.write_file("tests/test_backend_integration.py", self._timepro_integration_test())
-        self.project.write_file("api_contract.json", self._timepro_api_contract())
-        self.project.write_file(".app-builder/backend.json", json.dumps({"runtime":"python","entrypoint":"backend.py","database":"sqlite","api_base":"/api/timepro","health":"/health"}, indent=2) + "\n")
-        return "TimePro backend persistence service generated"
+        if self.is_timepro(mission):
+            self.project.write_file("backend.py", self._timepro_backend())
+            self.project.write_file("tests/test_backend_integration.py", self._timepro_integration_test())
+            self.project.write_file("api_contract.json", self._timepro_api_contract())
+            manifest = {"runtime": "python", "entrypoint": "backend.py", "database": "sqlite", "api_base": "/api/timepro", "health": "/health", "generated": True}
+            self.project.write_file(".app-builder/backend.json", json.dumps(manifest, indent=2) + "\n")
+            return "TimePro backend persistence service generated"
+        features = self._load_features()
+        if "storage" not in features:
+            return "Backend generation skipped: project has no storage capability"
+        manifest = {
+            "runtime": "python",
+            "entrypoint": "backend.py",
+            "database": "sqlite",
+            "api_base": "/api",
+            "health": "/health",
+            "generated": True,
+            "capabilities": ["crud", "health"],
+        }
+        self.project.write_file("backend.py", self._generic_backend(mission))
+        self.project.write_file("tests/test_backend_integration.py", self._generic_backend_test())
+        self.project.write_file(".app-builder/backend.json", json.dumps(manifest, indent=2) + "\n")
+        self.project.write_file("api_contract.json", self._generic_api_contract())
+        return "Generic persistent backend generated"
 
     @staticmethod
     def _timepro_integration_test() -> str:
@@ -247,6 +264,104 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init_db(); ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 """
+    @staticmethod
+    def _generic_api_contract() -> str:
+        return json.dumps({
+            "base": "/api",
+            "resources": {"records": {"GET": "/api/records", "POST": "/api/records", "PUT": "/api/records?id={id}", "DELETE": "/api/records?id={id}"}},
+            "health": "/health",
+            "persistence": {"required": True, "adapter": "sqlite"}
+        }, indent=2) + "\n"
+
+    @staticmethod
+    def _generic_backend() -> str:
+        return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+import sqlite3
+from urllib.parse import parse_qs, urlparse
+
+DB = os.environ.get("APP_DB", "app.db")
+PORT = int(os.environ.get("APP_PORT", "8001"))
+
+def init_db():
+    with sqlite3.connect(DB) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS records (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+def payload(row):
+    return {"id": row[0], **json.loads(row[1]), "created_at": row[2]}
+
+class Handler(BaseHTTPRequestHandler):
+    def send_json(self, status, value):
+        raw = json.dumps(value).encode()
+        self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > 1000000: raise ValueError("request too large")
+        return json.loads(self.rfile.read(length) or b"{}")
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path == "/health": return self.send_json(200, {"ok": True})
+        if path == "/api/records":
+            with sqlite3.connect(DB) as db:
+                rows = db.execute("SELECT id, data, created_at FROM records ORDER BY id DESC").fetchall()
+            return self.send_json(200, [payload(r) for r in rows])
+        return self.send_json(404, {"error": "not found"})
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/records": return self.send_json(404, {"error": "not found"})
+        data = self.read_json()
+        with sqlite3.connect(DB) as db:
+            cur = db.execute("INSERT INTO records (data) VALUES (?)", (json.dumps(data),))
+            row = db.execute("SELECT id, data, created_at FROM records WHERE id=?", (cur.lastrowid,)).fetchone()
+        return self.send_json(201, payload(row))
+    def do_PUT(self):
+        if urlparse(self.path).path != "/api/records": return self.send_json(404, {"error": "not found"})
+        data = self.read_json(); record_id = int(data.pop("id", 0))
+        with sqlite3.connect(DB) as db:
+            changed = db.execute("UPDATE records SET data=? WHERE id=?", (json.dumps(data), record_id)).rowcount
+            row = db.execute("SELECT id, data, created_at FROM records WHERE id=?", (record_id,)).fetchone() if changed else None
+        return self.send_json(200, payload(row)) if row else self.send_json(404, {"error": "not found"})
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/records": return self.send_json(404, {"error": "not found"})
+        record_id = int(parse_qs(parsed.query).get("id", ["0"])[0])
+        with sqlite3.connect(DB) as db: changed = db.execute("DELETE FROM records WHERE id=?", (record_id,)).rowcount
+        return self.send_json(200, {"deleted": True}) if changed else self.send_json(404, {"error": "not found"})
+
+if __name__ == "__main__":
+    init_db(); ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+"""
+
+    @staticmethod
+    def _generic_backend_test() -> str:
+        return '''import json, os, subprocess, sys, tempfile, time
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+root = Path(__file__).resolve().parents[1]
+def call(url, method="GET", payload=None):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = Request(url, data=data, method=method, headers={"Content-Type":"application/json"} if data else {})
+    with urlopen(req, timeout=4) as response: return json.load(response)
+
+with tempfile.TemporaryDirectory() as tmp:
+    port = "18082"
+    env = dict(os.environ, APP_PORT=port, APP_DB=str(Path(tmp) / "app.db"))
+    process = subprocess.Popen([sys.executable, str(root / "backend.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        base = "http://127.0.0.1:" + port
+        time.sleep(0.3)
+        assert call(base + "/health")["ok"] is True
+        created = call(base + "/api/records", "POST", {"name":"test"})
+        assert created["name"] == "test"
+        updated = call(base + "/api/records", "PUT", {"id":created["id"],"name":"updated"})
+        assert updated["name"] == "updated"
+        assert call(base + "/api/records")
+        assert call(base + "/api/records?id=" + str(created["id"]), "DELETE")["deleted"] is True
+    finally:
+        process.terminate(); process.wait(timeout=3)
+'''
+    
     def implement_feature(self, feature: str, mission: str) -> str:
         files = self.project.list_files(".")
         if self.is_timepro(mission):
