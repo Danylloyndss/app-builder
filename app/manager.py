@@ -49,6 +49,14 @@ class Manager:
             except Exception:
                 pass
 
+    def _cancel_requested(self):
+        try:
+            return bool(self.progress_callback and self.progress_callback(self.memory, "running") is False)
+        except JobCancelled:
+            raise
+        except Exception:
+            return False
+
     def _check_cancelled(self):
         self._progress("running")
 
@@ -115,10 +123,10 @@ class Manager:
         try:
             self._check_cancelled()
             if task.id == "test":
-                ok, message = self.tester.test(self.workspace); attempts = 0
+                ok, message = self.tester.test(self.workspace, cancel_check=lambda: self._cancel_requested()); attempts = 0
                 while not ok and attempts < self.max_retries:
                     self._check_cancelled()
-                    attempts += 1; self.memory.errors.append(f"Attempt {attempts}: {message}"); self.memory.record("repair", attempt=attempts, error=message); self.executor.execute("Repair after test failure", self.workspace, self.memory.mission); ok, message = self.tester.test(self.workspace)
+                    attempts += 1; self.memory.errors.append(f"Attempt {attempts}: {message}"); self.memory.record("repair", attempt=attempts, error=message); self.executor.execute("Repair after test failure", self.workspace, self.memory.mission); ok, message = self.tester.test(self.workspace, cancel_check=lambda: self._cancel_requested())
                 if not ok:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self._progress("failed"); self.memory.errors.append(message); self.memory.record("tests_failed", task_id=task.id, message=message); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = message; self.memory.record("tests_passed", task_id=task.id, message=message)
