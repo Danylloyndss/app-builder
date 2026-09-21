@@ -121,9 +121,10 @@ class BuildEngine:
     def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
         schema = schema or {"entity": "ApplicationRecord", "entities": ["ApplicationRecord"], "fields": ["id"], "entity_fields": {"ApplicationRecord": ["id"]}, "business_rules": []}
         schema_json = json.dumps(schema, ensure_ascii=False)
-        source = """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        source = r'''from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
+import re
 import sqlite3
 from urllib.parse import parse_qs, urlparse
 
@@ -141,16 +142,29 @@ def init_db():
 def entity_name():
     return str(SCHEMA.get("entity") or "ApplicationRecord")
 
-def resource_path():
-    return "/api/records"
+def slug(value):
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", str(value)).lower().replace("_", "-")
+
+def entity_for_path(path):
+    if path == "/api/records":
+        return entity_name()
+    for entity in SCHEMA.get("entities", [entity_name()]):
+        if path == "/api/" + slug(entity):
+            return str(entity)
+    return None
+
+def fields_for_entity(entity):
+    mapped = SCHEMA.get("entity_fields") or {}
+    fields = mapped.get(entity) or SCHEMA.get("fields", ["id"])
+    return [str(x) for x in fields if str(x) and str(x) != "id"]
 
 def payload(row):
     return {"id": row[0], **json.loads(row[1]), "created_at": row[2], "_entity": row[3]}
 
-def validate(data):
+def validate(data, entity=None):
     if not isinstance(data, dict):
         raise ValueError("payload must be an object")
-    fields = [str(x) for x in SCHEMA.get("fields", []) if str(x) and str(x) != "id"]
+    fields = fields_for_entity(entity or entity_name())
     unknown = [key for key in data if key not in fields]
     if unknown:
         raise ValueError("unknown fields: " + ", ".join(sorted(unknown)))
@@ -161,9 +175,9 @@ def validate(data):
                     raise ValueError(key + " must be zero or positive")
     return data
 
-def save(data, record_id=None):
+def save(data, record_id=None, entity=None):
     encoded = json.dumps(data, ensure_ascii=False)
-    entity = entity_name()
+    entity = entity or entity_name()
     with sqlite3.connect(DB) as db:
         if record_id is None:
             cur = db.execute("INSERT INTO entity_records (entity, data) VALUES (?, ?)", (entity, encoded))
@@ -188,42 +202,50 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/health":
             return self.send_json(200, {"ok": True, "entity": entity_name(), "schema_version": SCHEMA.get("version", 1)})
-        if parsed.path == resource_path():
+        entity = entity_for_path(parsed.path)
+        if entity:
             with sqlite3.connect(DB) as db:
-                rows = db.execute("SELECT id, data, created_at, entity FROM entity_records WHERE entity=? ORDER BY id DESC", (entity_name(),)).fetchall()
+                rows = db.execute("SELECT id, data, created_at, entity FROM entity_records WHERE entity=? ORDER BY id DESC", (entity,)).fetchall()
             return self.send_json(200, [payload(row) for row in rows])
         return self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
-        if urlparse(self.path).path != resource_path(): return self.send_json(404, {"error": "not found"})
-        try: return self.send_json(201, payload(save(validate(self.read_json()))))
-        except (ValueError, TypeError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
+        entity = entity_for_path(urlparse(self.path).path)
+        if not entity: return self.send_json(404, {"error": "not found"})
+        try:
+            return self.send_json(201, payload(save(validate(self.read_json(), entity), entity=entity)))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
 
     def do_PUT(self):
         parsed = urlparse(self.path)
-        if parsed.path != resource_path(): return self.send_json(404, {"error": "not found"})
+        entity = entity_for_path(parsed.path)
+        if not entity: return self.send_json(404, {"error": "not found"})
         try:
             data = self.read_json()
             record_id = int(data.pop("id", parse_qs(parsed.query).get("id", ["0"])[0]))
             if record_id <= 0: return self.send_json(400, {"error": "id is required"})
-            row = save(validate(data), record_id)
+            row = save(validate(data, entity), record_id, entity=entity)
             return self.send_json(200, payload(row)) if row else self.send_json(404, {"error": "not found"})
-        except (ValueError, TypeError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        if parsed.path != resource_path(): return self.send_json(404, {"error": "not found"})
+        entity = entity_for_path(parsed.path)
+        if not entity: return self.send_json(404, {"error": "not found"})
         try:
             record_id = int(parse_qs(parsed.query).get("id", ["0"])[0])
             with sqlite3.connect(DB) as db:
-                changed = db.execute("DELETE FROM entity_records WHERE id=? AND entity=?", (record_id, entity_name())).rowcount
+                changed = db.execute("DELETE FROM entity_records WHERE id=? AND entity=?", (record_id, entity)).rowcount
             return self.send_json(200, {"deleted": True}) if changed else self.send_json(404, {"error": "not found"})
-        except ValueError: return self.send_json(400, {"error": "id is required"})
+        except ValueError:
+            return self.send_json(400, {"error": "id is required"})
 
 if __name__ == "__main__":
     init_db()
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
-"""
+'''
         return source.replace("__SCHEMA__", repr(schema_json))
 
     @staticmethod
@@ -431,19 +453,29 @@ if __name__ == "__main__":
         resources = {}
         for entity in entities:
             resource = re.sub(r"(?<!^)(?=[A-Z])", "_", str(entity)).lower().replace("_", "-")
+            fields = list(fields_by_entity.get(entity, schema.get("fields", ["id"])))
+            definitions = []
+            for name in fields:
+                field = str(name)
+                lower = field.lower()
+                field_type = "integer" if lower == "id" or lower.endswith("_id") else ("number" if lower in {"amount", "price", "total", "hours"} else ("email" if "email" in lower else ("date" if "date" in lower else ("time" if "time" in lower else "text"))))
+                definitions.append({"name": field, "type": field_type, "required": field == "id" or field in {"name", "title", "date", "number"}})
             resources[resource] = {
                 "entity": entity,
-                "fields": fields_by_entity.get(entity, schema.get("fields", ["id"])),
-                "GET": "/api/records",
-                "POST": "/api/records",
-                "PUT": "/api/records?id={id}",
-                "DELETE": "/api/records?id={id}",
+                "fields": fields,
+                "field_definitions": definitions,
+                "GET": "/api/" + resource,
+                "POST": "/api/" + resource,
+                "PUT": "/api/" + resource + "?id={id}",
+                "DELETE": "/api/" + resource + "?id={id}",
             }
         return json.dumps({
-            "version": 2,
+            "version": 3,
             "base": "/api",
             "primary_entity": schema.get("entity") or entities[0],
+            "primary_resource": re.sub(r"(?<!^)(?=[A-Z])", "_", str(schema.get("entity") or entities[0])).lower().replace("_", "-"),
             "resources": resources,
+            "compatibility": {"records": "/api/records"},
             "business_rules": schema.get("business_rules", []),
             "health": "/health",
             "persistence": schema.get("persistence", {"required": True, "adapter": "sqlite"}),
