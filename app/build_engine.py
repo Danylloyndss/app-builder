@@ -722,11 +722,16 @@ Les données sont stockées dans `localStorage`. L’authentification, une vraie
             if not fields:
                 fields = ["date", "location", "note"]
             inputs = []
+            definitions = ((schema or {}).get("field_definitions") or {}).get((schema or {}).get("entity") or "", [])
+            by_name = {item.get("name"): item for item in definitions if isinstance(item, dict)}
             for field_name in fields:
                 if field_name == "id":
                     continue
-                input_type = "number" if field_name in {"amount", "price", "total", "hours"} else "email" if field_name == "email" else "date" if field_name in {"date", "due_date"} else "time" if field_name in {"time", "start", "end"} else "text"
-                inputs.append(f'<label>{escape(field_name.replace("_", " ").title())}<input name="{escape(field_name)}" type="{input_type}"></label>')
+                definition = by_name.get(field_name, {})
+                kind = definition.get("type", "text")
+                input_type = {"number": "number", "integer": "number", "email": "email", "date": "date", "time": "time"}.get(kind, "text")
+                required = " required" if definition.get("required") else ""
+                inputs.append(f'<label>{escape(field_name.replace("_", " ").title())}<input name="{escape(field_name)}" type="{input_type}"{required}></label>')
             sections.append('<form data-save><h2>New entry</h2>' + ''.join(inputs) + '<button>Save</button></form>')
         if "calculator" in features:
             sections.append('<section><h2>Total</h2><strong id="total">0h 0min</strong></section>')
