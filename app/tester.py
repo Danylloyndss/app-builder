@@ -83,8 +83,16 @@ class Tester:
                 entrypoint = workspace / str(backend_manifest["entrypoint"])
                 if not entrypoint.exists():
                     return False, "Generated backend entrypoint is missing"
-            except (OSError, ValueError):
-                return False, "Generated backend manifest is invalid JSON"
+                schema_ref = backend_manifest.get("schema")
+                if schema_ref:
+                    schema_path = workspace / str(schema_ref)
+                    if not schema_path.exists():
+                        return False, "Generated backend schema is missing"
+                    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+                    if not schema.get("entity") or not schema.get("resource") or not isinstance(schema.get("fields"), list):
+                        return False, "Generated backend schema is invalid"
+            except (OSError, ValueError, TypeError):
+                return False, "Generated backend manifest or schema is invalid JSON"
 
             code, output = self.executor.run_command(
                 ["python", "-m", "py_compile", "backend.py"],
