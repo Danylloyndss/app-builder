@@ -45,6 +45,10 @@ def _run_pending_jobs():
                     stale["status"]="cancelled"; stale["error"]="Cancelled during worker restart"; stale["finished_at"]=datetime.now(timezone.utc).isoformat()
                 else:
                     stale["status"]="pending"; stale["error"]="Recovered after worker restart"; stale["started_at"]=None
+                    stale["diagnostics"]=dict(stale.get("diagnostics") or {})
+                    stale["diagnostics"]["recovery_reason"]="worker_restart"
+                    stale["diagnostics"]["recovered_at"]=datetime.now(timezone.utc).isoformat()
+                    stale["diagnostics"]["recovery_count"]=int(stale["diagnostics"].get("recovery_count",0))+1
                 changed=True
         if changed: _save_jobs(jobs)
         while True:
