@@ -44,3 +44,14 @@ def test_timepro_attachment_and_signature_tables_are_ready(tmp_path: Path):
     )
     assert db.fetch_one("SELECT filename FROM timesheet_attachments WHERE timesheet_id = ?", (timesheet_id,))["filename"] == "chantier.jpg"
     assert db.fetch_one("SELECT stored_path FROM timesheet_signatures WHERE timesheet_id = ?", (timesheet_id,))["stored_path"].endswith("1.png")
+
+
+def test_execute_insert_returns_generated_row_id(tmp_path: Path):
+    db = Database(tmp_path / "insert.db")
+    db.initialize("CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)")
+
+    first = db.execute_insert("INSERT INTO items (name) VALUES (?)", ("first",))
+    second = db.execute_insert("INSERT INTO items (name) VALUES (?)", ("second",))
+
+    assert first == 1
+    assert second == 2
