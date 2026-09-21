@@ -66,10 +66,14 @@ def _run_pending_jobs():
                         current_now["result_status"]=state
                         current_now["completed_count"]=len(memory.completed)
                         current_now["error_count"]=len(memory.errors)
+                        if state=="waiting_for_approval":
+                            pending=APPROVALS.list_pending()
+                            match=next((a for a in pending if a.get("action")==memory.current_task),None)
+                            if match: current_now["approval_id"]=match.get("id")
                         _save_jobs(jobs_now)
                         _job_event(current_now,"progress",f"{state}: {memory.current_task}" if memory.current_task else str(state))
                 memory=Manager(workspace=WORKSPACE, progress_callback=progress).run(job["mission"],resume=bool(job.get("resume")))
-                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="completed" if memory.status != "cancelled" else "cancelled"; current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="waiting_for_approval" if memory.status=="waiting_for_approval" else ("completed" if memory.status != "cancelled" else "cancelled"); current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
                 _job_event(current,"finished",memory.status)
             except JobCancelled as exc:
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="cancelled"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
@@ -227,7 +231,7 @@ class Handler(BaseHTTPRequestHandler):
                 approval_id=str(data.get("id",""))
                 result=APPROVALS.decide(approval_id,bool(data.get("approved",False)))
                 if result is None: self._send(404,{"error":"approval not found"}); return
-                if result.approved:
+                if result.get("status")=="approved":
                     jobs=_load_jobs()
                     resumed=False
                     for job in jobs:
