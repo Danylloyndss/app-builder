@@ -17,7 +17,7 @@ from .tester import Tester
 
 
 class Manager:
-    def __init__(self, workspace: str = "workspace", max_retries: int = 2):
+    def __init__(self, workspace: str = "workspace", max_retries: int = 2, progress_callback=None):
         self.workspace = Path(workspace)
         self.memory_path = self.workspace / "state.json"
         self.memory = ProjectMemory.load(self.memory_path)
@@ -32,6 +32,12 @@ class Manager:
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.checkpoints = CheckpointStore(self.workspace)
         self.max_retries = max_retries
+        self.progress_callback = progress_callback
+
+    def _progress(self, status=None):
+        if self.progress_callback:
+            try: self.progress_callback(self.memory, status or self.memory.status)
+            except Exception: pass
 
     def _prepare_project(self, mission: str) -> list[BuildTask]:
         artifact_dir = self.workspace / ".app-builder"
@@ -79,7 +85,7 @@ class Manager:
             except FileNotFoundError: pass
 
     def _execute_task(self, task: BuildTask, tasks: list[BuildTask]) -> bool:
-        self.memory.current_task = task.title; self.memory.status = "running"; self.memory.task_statuses[task.id] = "running"; task.status = "running"
+        self.memory.current_task = task.title; self.memory.status = "running"; self._progress("running"); self.memory.task_statuses[task.id] = "running"; task.status = "running"
         self._save_tasks(tasks); self.memory.record("task_started", task_id=task.id, title=task.title, kind=task.kind); self._checkpoint_before_change(task); self.memory.save(self.memory_path)
         decision = self.policy.decide(task.title)
         lower_mission = self.memory.mission.lower()
@@ -89,7 +95,7 @@ class Manager:
         if needs_approval and not approved:
             existing = next((x for x in self.approvals.list_pending() if x["action"] == task.title), None)
             request = existing or self.approvals.create(task.title, "Human approval required before this task can execute.")
-            self.memory.task_statuses[task.id] = "waiting_for_approval"; task.status = "waiting_for_approval"; self.memory.status = "waiting_for_approval"
+            self.memory.task_statuses[task.id] = "waiting_for_approval"; self._progress("waiting_for_approval"); task.status = "waiting_for_approval"; self.memory.status = "waiting_for_approval"
             self.memory.record("approval_requested", request_id=request["id"] if isinstance(request, dict) else request.id, task_id=task.id, task=task.title); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
         if not decision.allowed and not decision.requires_approval:
             self.memory.task_statuses[task.id] = "blocked"; task.status = "blocked"; self.memory.status = "blocked"; self.memory.errors.append(decision.reason); self.memory.record("action_blocked", task_id=task.id, reason=decision.reason); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
@@ -99,7 +105,7 @@ class Manager:
                 while not ok and attempts < self.max_retries:
                     attempts += 1; self.memory.errors.append(f"Attempt {attempts}: {message}"); self.memory.record("repair", attempt=attempts, error=message); self.executor.execute("Repair after test failure", self.workspace, self.memory.mission); ok, message = self.tester.test(self.workspace)
                 if not ok:
-                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append(message); self.memory.record("tests_failed", task_id=task.id, message=message); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
+                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self._progress("failed"); self.memory.errors.append(message); self.memory.record("tests_failed", task_id=task.id, message=message); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = message; self.memory.record("tests_passed", task_id=task.id, message=message)
                 repair = next((item for item in tasks if item.id == "repair"), None)
                 if repair is not None and self.memory.task_statuses.get("repair") != "completed": self.memory.task_statuses["repair"] = "completed"; repair.status = "completed"; self.memory.completed.append("Repair skipped: tests passed"); self.memory.record("repair_skipped", reason="tests_passed")
@@ -108,7 +114,7 @@ class Manager:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append("Acceptance checks failed"); self.memory.record("acceptance_failed", task_id=task.id); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = "Acceptance checks passed"
             else: result = self.executor.execute(task.title, self.workspace, self.memory.mission)
-            self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self.memory.completed.append(result)
+            self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running"); self.memory.completed.append(result)
             if approved: self.approvals.consume(approved["id"]); self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
             if local_timesheet_access: self.memory.record("local_access_task", task_id=task.id, approval="not_required_external_action")
             self.memory.record("task_completed", task_id=task.id, title=task.title, result=result); self._save_tasks(tasks); self.memory.save(self.memory_path); return True
