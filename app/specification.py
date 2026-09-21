@@ -83,7 +83,8 @@ class SpecificationBuilder:
         if "forms" in features: screens.append("Form")
         if "history" in features: screens.append("History")
         if "authentication" in features: screens.append("Login")
-        if "data storage" in features: entities.append("ApplicationRecord")
+        if "data storage" in features:
+            entities.extend(self._infer_entities(text))
         security = ["Never expose secrets in generated source code", "Validate user-controlled input"]
         if "authentication" in features:
             security.append("Require explicit human approval before external account/login actions")
@@ -101,6 +102,37 @@ class SpecificationBuilder:
             users=users, screens=screens, features=features, data_entities=entities,
             security_requirements=security, acceptance_criteria=acceptance,
         )
+
+    @staticmethod
+    def _infer_entities(mission: str) -> list[str]:
+        lower = mission.lower()
+        candidates = []
+        patterns = {
+            "expense": "Expense",
+            "expenses": "Expense",
+            "client": "Client",
+            "clients": "Client",
+            "customer": "Customer",
+            "customers": "Customer",
+            "product": "Product",
+            "products": "Product",
+            "order": "Order",
+            "orders": "Order",
+            "employee": "Employee",
+            "employees": "Employee",
+            "appointment": "Appointment",
+            "appointments": "Appointment",
+            "task": "Task",
+            "tasks": "Task",
+            "project": "Project",
+            "projects": "Project",
+            "invoice": "Invoice",
+            "invoices": "Invoice",
+        }
+        for keyword, entity in patterns.items():
+            if keyword in lower and entity not in candidates:
+                candidates.append(entity)
+        return candidates or ["ApplicationRecord"]
 
     @staticmethod
     def _app_name(mission: str) -> str:
