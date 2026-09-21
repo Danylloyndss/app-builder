@@ -74,6 +74,17 @@ class Tester:
             ok, message = self._test_timepro(workspace)
             if not ok:
                 return False, message
+            contract = workspace / "api_contract.json"
+            if not contract.exists():
+                return False, "TimePro backend contract is missing"
+            try:
+                data = json.loads(contract.read_text(encoding="utf-8"))
+                if data.get("persistence", {}).get("required") is not True:
+                    return False, "TimePro backend contract does not require persistence"
+                if "timesheets" not in data.get("resources", {}):
+                    return False, "TimePro backend contract is missing timesheets resource"
+            except (OSError, ValueError):
+                return False, "TimePro backend contract is invalid JSON"
 
         tests_dir = workspace / "tests"
         if tests_dir.exists():
