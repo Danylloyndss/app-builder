@@ -268,17 +268,32 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init_db(); ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 """
-    @staticmethod
-    def _generic_backend_schema(mission: str) -> dict:
+    def _generic_backend_schema(self, mission: str) -> dict:
         lower = mission.lower()
+        spec_path = self.project.root / ".app-builder" / "spec.json"
+        spec = {}
+        if spec_path.exists():
+            try:
+                spec = json.loads(spec_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                spec = {}
+        entities = [str(x) for x in spec.get("data_entities", []) if str(x).strip()]
+        entity = entities[0] if entities else "ApplicationRecord"
         fields = ["id"]
-        if any(x in lower for x in ("form", "cadastro")):
-            fields += ["date", "location", "note"]
-        if any(x in lower for x in ("hour", "hours", "hora", "horas", "time", "tempo")):
-            fields += ["start", "end", "break"]
-        if any(x in lower for x in ("name", "nome", "employee", "cliente", "client")):
-            fields += ["name"]
-        return {"version": 1, "resource": "records", "entity": "ApplicationRecord", "fields": list(dict.fromkeys(fields)), "persistence": {"required": True, "adapter": "sqlite"}}
+        if any(x in lower for x in ("form", "cadastro")): fields += ["date", "location", "note"]
+        if any(x in lower for x in ("hour", "hours", "hora", "horas", "time", "tempo")): fields += ["start", "end", "break"]
+        if any(x in lower for x in ("name", "nome", "employee", "cliente", "client")): fields += ["name"]
+        rules = [str(x) for x in spec.get("business_rules", []) if str(x).strip()]
+        return {
+            "version": 2,
+            "resource": "records",
+            "entity": entity,
+            "entities": entities or [entity],
+            "fields": list(dict.fromkeys(fields)),
+            "business_rules": rules,
+            "integrations": list(spec.get("integrations", [])),
+            "persistence": {"required": True, "adapter": "sqlite"},
+        }
 
     @staticmethod
     def _generic_api_contract(schema: dict | None = None) -> str:
