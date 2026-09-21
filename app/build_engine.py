@@ -433,13 +433,29 @@ if __name__ == "__main__":
 
     @staticmethod
     def _generic_api_contract(schema: dict | None = None) -> str:
-        schema = schema or {"version": 1, "resource": "records", "entity": "ApplicationRecord", "fields": ["id"], "persistence": {"required": True, "adapter": "sqlite"}}
+        schema = schema or {}
+        entities = schema.get("entities") or [schema.get("entity") or "ApplicationRecord"]
+        fields_by_entity = schema.get("entity_fields") or {}
+        resources = {}
+        for entity in entities:
+            resource = re.sub(r"(?<!^)(?=[A-Z])", "_", str(entity)).lower().replace("_", "-")
+            resources[resource] = {
+                "entity": entity,
+                "fields": fields_by_entity.get(entity, schema.get("fields", ["id"])),
+                "GET": "/api/records",
+                "POST": "/api/records",
+                "PUT": "/api/records?id={id}",
+                "DELETE": "/api/records?id={id}",
+            }
         return json.dumps({
+            "version": 2,
             "base": "/api",
-            "resources": {"records": {"entity": schema["entity"], "fields": schema["fields"], "GET": "/api/records", "POST": "/api/records", "PUT": "/api/records?id={id}", "DELETE": "/api/records?id={id}"}},
+            "primary_entity": schema.get("entity") or entities[0],
+            "resources": resources,
+            "business_rules": schema.get("business_rules", []),
             "health": "/health",
-            "persistence": schema["persistence"]
-        }, indent=2) + "\n"
+            "persistence": schema.get("persistence", {"required": True, "adapter": "sqlite"}),
+        }, indent=2, ensure_ascii=False) + "\n"
 
     @staticmethod
     def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
