@@ -1,6 +1,6 @@
 """HTTP control plane for App Builder V1 and TimePro."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import csv, hmac, io, json, os, threading, zipfile
+import csv, hmac, io, json, os, threading, zipfile, unicodedata
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from .approvals import ApprovalStore
@@ -18,6 +18,30 @@ class Handler(BaseHTTPRequestHandler):
         body=TIMEPRO_SW.read_bytes(); self.send_response(200); self.send_header("Content-Type","application/javascript; charset=utf-8"); self.send_header("Service-Worker-Allowed","/"); self.send_header("Cache-Control","no-cache"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _filters(self):
         q=parse_qs(urlparse(self.path).query); return q.get("employee",[None])[0],q.get("company",[None])[0],q.get("date_from",[None])[0],q.get("date_to",[None])[0]
+    def _send_pdf(self):
+        employee,company,date_from,date_to=self._filters()
+        rows=TIMEPRO.history(employee,company,date_from,date_to)
+        lines=["TimePro - Feuille d'heures","Rapport exporte"]
+        if employee: lines.append("Employe: "+employee)
+        if company: lines.append("Entreprise: "+company)
+        if date_from or date_to: lines.append("Periode: "+(date_from or "...")+" -> "+(date_to or "..."))
+        lines.append("")
+        lines.append(f"Feuilles: {len(rows)} | Total: {sum(int(r['total_minutes']) for r in rows)//60}h {sum(int(r['total_minutes']) for r in rows)%60:02d}")
+        lines.append("")
+        for r in rows:
+            total=int(r["total_minutes"]); lines.append(f"{r['work_date']} | {r['employee']} | {r.get('company','')} | {r.get('location','')} | {r['start_time']}-{r['end_time']} | {total//60}h {total%60:02d}")
+        lines=lines[:48]
+        def clean(v):
+            return unicodedata.normalize("NFKD",str(v)).encode("ascii","ignore").decode().replace("\\","\\\\").replace("(","\\(").replace(")","\\)")
+        stream="BT /F1 10 Tf 42 800 Td 14 TL "+" ".join(["("+clean(line)+") Tj T* " for line in lines])+"ET"
+        objects=["<< /Type /Catalog /Pages 2 0 R >>","<< /Type /Pages /Kids [3 0 R] /Count 1 >>","<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>","<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",f"<< /Length {len(stream.encode('latin-1'))} >>\\nstream\\n{stream}\\nendstream"]
+        out=bytearray(b"%PDF-1.4\\n"); offsets=[0]
+        for i,obj in enumerate(objects,1):
+            offsets.append(len(out)); out.extend(f"{i} 0 obj\\n{obj}\\nendobj\\n".encode("latin-1"))
+        xref=len(out); out.extend(f"xref\\n0 {len(objects)+1}\\n0000000000 65535 f \\n".encode())
+        for off in offsets[1:]: out.extend(f"{off:010d} 00000 n \\n".encode())
+        out.extend(f"trailer\\n<< /Size {len(objects)+1} /Root 1 0 R >>\\nstartxref\\n{xref}\\n%%EOF".encode())
+        body=bytes(out); self.send_response(200); self.send_header("Content-Type","application/pdf"); self.send_header("Content-Disposition","attachment; filename=timepro-feuilles.pdf"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _send_csv(self):
         employee,company,date_from,date_to=self._filters(); output=io.StringIO(); writer=csv.writer(output); writer.writerow(["ID","Employé","Entreprise","Date","Lieu","Début","Pause (min)","Fin","Total (min)","Total","Recado","Signature","Pièces jointes"])
         for r in TIMEPRO.history(employee,company,date_from,date_to): writer.writerow([r["id"],r["employee"],r.get("company",""),r["work_date"],r["location"],r["start_time"],r["pause_minutes"],r["end_time"],r["total_minutes"],f'{int(r["total_minutes"])//60}h {int(r["total_minutes"])%60:02d}min',r["note"],"oui" if r.get("has_signature") else "non",len(r.get("attachments",[]))])
@@ -60,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
         parsed=urlparse(self.path)
-        if parsed.path=="/api/timepro/export.csv": self._send_csv(); return
+        if parsed.path=="/api/timepro/export.csv": self._send_csv(); return\n        if parsed.path=="/api/timepro/export.pdf": self._send_pdf(); return
         if parsed.path=="/api/timepro/attachments": self._send_attachment(); return
         if parsed.path=="/api/timepro/history":
             employee,company,date_from,date_to=self._filters(); self._send(200,{"timesheets":TIMEPRO.history(employee,company,date_from,date_to)}); return
