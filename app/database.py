@@ -39,6 +39,12 @@ class Database:
         finally:
             conn.close()
 
+    def execute_insert(self, sql: str, params: Sequence[object] = ()) -> int:
+        """Execute an INSERT and return its generated row id."""
+        with self.connection() as conn:
+            cursor = conn.execute(sql, tuple(params))
+            return int(cursor.lastrowid)
+
     def execute(self, sql: str, params: Sequence[object] = ()) -> int:
         with self.connection() as conn:
             cursor = conn.execute(sql, tuple(params))
