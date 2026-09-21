@@ -175,8 +175,25 @@ class BuildEngine:
   const status = document.querySelector('#status');
   const key = 'timepro-timesheets-v1';
 
-  const read = () => JSON.parse(localStorage.getItem(key) || '[]');
-  const write = (items) => localStorage.setItem(key, JSON.stringify(items));
+  function read() {
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = JSON.parse(raw || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function write(items) {
+    try {
+      localStorage.setItem(key, JSON.stringify(items));
+      return true;
+    } catch (_) {
+      status.textContent = 'Impossible de sauvegarder la feuille sur cet appareil.';
+      return false;
+    }
+  }
 
   function minutes(value) {
     if (!value) return null;
@@ -227,7 +244,7 @@ class BuildEngine:
     item.createdAt = new Date().toISOString();
     const items = read();
     items.unshift(item);
-    write(items);
+    if (!write(items)) return;
     form.reset();
     total.textContent = '0h 00min';
     status.textContent = 'Feuille envoyée avec succès';
