@@ -2,6 +2,9 @@
 
 from pathlib import Path
 import subprocess
+import os
+import signal
+import time
 
 
 class Workspace:
@@ -43,12 +46,56 @@ class Workspace:
             if path.is_file()
         )
 
-    def run(self, command: list[str], timeout: int = 120) -> tuple[int, str]:
-        process = subprocess.run(
+    def run(self, command: list[str], timeout: int = 120, cancel_check=None) -> tuple[int, str]:
+        """Run a command with a hard timeout and optional cooperative cancellation.
+
+        Commands run in their own process group so a cancellation/timeout can
+        terminate the whole child tree instead of leaving orphan processes.
+        """
+        if not command or any(not isinstance(part, str) or not part for part in command):
+            raise ValueError("Command must be a non-empty list of strings")
+        env = os.environ.copy()
+        process = subprocess.Popen(
             command,
             cwd=self.root,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=timeout,
+            start_new_session=True,
+            env=env,
         )
-        return process.returncode, (process.stdout + process.stderr).strip()
+        deadline = time.monotonic() + timeout
+        chunks = []
+        try:
+            while process.poll() is None:
+                if cancel_check is not None and cancel_check():
+                    os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(process.pid, signal.SIGKILL)
+                        process.wait()
+                    raise RuntimeError("Command cancelled")
+                if time.monotonic() >= deadline:
+                    os.killpg(process.pid, signal.SIGTERM)
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(process.pid, signal.SIGKILL)
+                        process.wait()
+                    raise subprocess.TimeoutExpired(command, timeout, output="".join(chunks))
+                if process.stdout is not None:
+                    line = process.stdout.readline()
+                    if line:
+                        chunks.append(line)
+                        continue
+                time.sleep(0.05)
+            if process.stdout is not None:
+                chunks.append(process.stdout.read())
+            return process.returncode, "".join(chunks).strip()
+        finally:
+            if process.poll() is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
