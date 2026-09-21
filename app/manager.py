@@ -112,7 +112,8 @@ class Manager:
         lower_mission = self.memory.mission.lower()
         local_timesheet_access = task.id == "auth" and ("timepro" in lower_mission or "timesheet" in lower_mission or "folha de horas" in lower_mission) and "login" not in lower_mission
         needs_approval = (task.requires_approval or decision.requires_approval) and not local_timesheet_access
-        approved = self.approvals.approved_for(task.title)
+        approval_id = self.memory.diagnostics.get("approval_id") if task.status == "waiting_for_approval" else None
+        approved = self.approvals.approved_for(task.title, approval_id)
         if needs_approval and not approved:
             existing = next((x for x in self.approvals.list_pending() if x["action"] == task.title), None)
             request = existing or self.approvals.create(task.title, "Human approval required before this task can execute.")
