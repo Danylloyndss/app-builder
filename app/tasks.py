@@ -53,7 +53,7 @@ class TaskBuilder:
 
         tasks.append(BuildTask("implement", "Implement requested functionality", "build", [previous], "medium"))
         if "data storage" in features or "storage" in features:
-            tasks.append(BuildTask("backend", "Generate backend and persistence layer", "storage", ["implement"], "medium", ["Persistence boundary is explicitly defined"]))
+            tasks.append(BuildTask("backend", "Generate backend and persistence layer", "storage", ["implement"], "medium", False, ["Persistence boundary is explicitly defined"]))
             backend_previous = "backend"
         else:
             backend_previous = "implement"
