@@ -109,10 +109,12 @@ class BuildEngine:
             "generated": True,
             "capabilities": ["crud", "health"],
         }
+        schema = self._generic_backend_schema(mission)
         self.project.write_file("backend.py", self._generic_backend(mission))
         self.project.write_file("tests/test_backend_integration.py", self._generic_backend_test())
-        self.project.write_file(".app-builder/backend.json", json.dumps(manifest, indent=2) + "\n")
-        self.project.write_file("api_contract.json", self._generic_api_contract())
+        self.project.write_file(".app-builder/backend.json", json.dumps({**manifest, "schema": ".app-builder/backend_schema.json"}, indent=2) + "\n")
+        self.project.write_file(".app-builder/backend_schema.json", json.dumps(schema, indent=2) + "\n")
+        self.project.write_file("api_contract.json", self._generic_api_contract(schema))
         return "Generic persistent backend generated"
 
     @staticmethod
@@ -267,12 +269,25 @@ if __name__ == "__main__":
     init_db(); ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 """
     @staticmethod
-    def _generic_api_contract() -> str:
+    def _generic_backend_schema(mission: str) -> dict:
+        lower = mission.lower()
+        fields = ["id"]
+        if any(x in lower for x in ("form", "cadastro")):
+            fields += ["date", "location", "note"]
+        if any(x in lower for x in ("hour", "hours", "hora", "horas", "time", "tempo")):
+            fields += ["start", "end", "break"]
+        if any(x in lower for x in ("name", "nome", "employee", "cliente", "client")):
+            fields += ["name"]
+        return {"version": 1, "resource": "records", "entity": "ApplicationRecord", "fields": list(dict.fromkeys(fields)), "persistence": {"required": True, "adapter": "sqlite"}}
+
+    @staticmethod
+    def _generic_api_contract(schema: dict | None = None) -> str:
+        schema = schema or {"version": 1, "resource": "records", "entity": "ApplicationRecord", "fields": ["id"], "persistence": {"required": True, "adapter": "sqlite"}}
         return json.dumps({
             "base": "/api",
-            "resources": {"records": {"GET": "/api/records", "POST": "/api/records", "PUT": "/api/records?id={id}", "DELETE": "/api/records?id={id}"}},
+            "resources": {"records": {"entity": schema["entity"], "fields": schema["fields"], "GET": "/api/records", "POST": "/api/records", "PUT": "/api/records?id={id}", "DELETE": "/api/records?id={id}"}},
             "health": "/health",
-            "persistence": {"required": True, "adapter": "sqlite"}
+            "persistence": schema["persistence"]
         }, indent=2) + "\n"
 
     @staticmethod
