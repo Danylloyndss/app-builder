@@ -71,6 +71,7 @@ class Manager:
         architecture = self.architecture.build(spec)
         architecture.save(artifact_dir / "architecture.json")
         tasks = self.tasks.build(spec, architecture)
+        self.tasks.validate_graph(tasks)
         self.tasks.save(tasks, artifact_dir / "tasks.json")
         manifest = {"builder_version":"v1","app_name":spec.app_name,"app_type":spec.app_type,"platforms":spec.platforms,"mission":mission,"acceptance_criteria":spec.acceptance_criteria,"security_requirements":spec.security_requirements,"task_ids":[task.id for task in tasks]}
         (artifact_dir / "build_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
