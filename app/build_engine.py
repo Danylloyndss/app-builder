@@ -121,7 +121,7 @@ class BuildEngine:
     @staticmethod
     def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
         schema = schema or {
-            "version": 3,
+            "version": 4,
             "entity": "ApplicationRecord",
             "entities": ["ApplicationRecord"],
             "fields": ["id"],
@@ -513,14 +513,32 @@ if __name__ == "__main__":
         for detected in entities:
             entity_fields.setdefault(detected, list(catalog_fields.get(detected, ["id", "name", "note"])))
         entity_fields.setdefault(entity, list(catalog_fields.get(entity, fields)))
+        type_hints = {
+            "id": "integer", "amount": "number", "price": "number", "total": "number",
+            "hours": "number", "date": "date", "due_date": "date", "time": "time",
+            "start": "time", "end": "time", "email": "email",
+        }
+        required_hints = {"name", "title", "date", "email", "number"}
+        field_definitions = {}
+        for detected in entities or [entity]:
+            definitions = []
+            for field_name in entity_fields.get(detected, ["id"]):
+                name = str(field_name)
+                definitions.append({
+                    "name": name,
+                    "type": type_hints.get(name, "text"),
+                    "required": name in required_hints and name != "id",
+                })
+            field_definitions[detected] = definitions
         primary_fields = entity_fields.get(entity, fields)
         return {
-            "version": 3,
+            "version": 4,
             "resource": "records",
             "entity": entity,
             "entities": entities or [entity],
             "fields": list(dict.fromkeys(primary_fields)),
             "entity_fields": entity_fields,
+            "field_definitions": field_definitions,
             "business_rules": rules,
             "integrations": list(spec.get("integrations", [])),
             "persistence": {"required": True, "adapter": "sqlite"},
@@ -538,6 +556,7 @@ if __name__ == "__main__":
             resources[resource] = {
                 "entity": entity,
                 "fields": fields,
+                "field_definitions": (schema.get("field_definitions") or {}).get(entity, []),
                 "GET": f"/api/{resource}",
                 "POST": f"/api/{resource}",
                 "PUT": f"/api/{resource}?id={{id}}",
