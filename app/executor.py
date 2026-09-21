@@ -13,6 +13,6 @@ class Executor:
         project.write_file(".app-builder/last_task.txt", task + "\n")
         return BuildEngine(workspace).execute(task, mission)
 
-    def run_command(self, command: list[str], workspace: Path, timeout: int = 120) -> tuple[int, str]:
+    def run_command(self, command: list[str], workspace: Path, timeout: int = 120, cancel_check=None) -> tuple[int, str]:
         """Run a project command through the sandbox workspace."""
-        return Workspace(workspace).run(command, timeout=timeout)
+        return Workspace(workspace).run(command, timeout=timeout, cancel_check=cancel_check)
