@@ -11,6 +11,16 @@ class TimeProApiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             service=TimeProService(Path(tmp)/"timepro.db"); row=service.create_timesheet({"employee":"Danyllo","work_date":"2026-09-17","location":"Neuchâtel","start_time":"08:00","pause_minutes":30,"end_time":"17:00","note":""})
             self.assertEqual(row["total_minutes"],510); history=service.history("Danyllo"); self.assertEqual(len(history),1); self.assertEqual(history[0]["location"],"Neuchâtel")
+    def test_get_timesheet_returns_one_record_with_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service=TimeProService(Path(tmp)/"timepro.db")
+            row=service.create_timesheet({"employee":"A","work_date":"2026-09-17","start_time":"08:00","end_time":"16:00"})
+            found=service.get_timesheet(row["id"])
+            self.assertEqual(found["id"],row["id"])
+            self.assertEqual(found["employee"],"A")
+            self.assertEqual(found["attachments"],[])
+            self.assertFalse(found["has_signature"])
+
     def test_dashboard_summarizes_records(self):
         with tempfile.TemporaryDirectory() as tmp:
             service=TimeProService(Path(tmp)/"timepro.db")
