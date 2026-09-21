@@ -56,7 +56,7 @@ class BuildEngineTests(unittest.TestCase):
             manifest = json.loads((Path(temp_dir) / ".app-builder" / "backend.json").read_text(encoding="utf-8"))
             contract = json.loads((Path(temp_dir) / "api_contract.json").read_text(encoding="utf-8"))
 
-            self.assertEqual(schema["entity"], "ApplicationRecord")
+            self.assertIn("ApplicationRecord", schema["entities"])
             self.assertIn("date", schema["fields"])
             self.assertEqual(manifest["schema"], ".app-builder/backend_schema.json")
             self.assertEqual(contract["resources"]["records"]["fields"], schema["fields"])
