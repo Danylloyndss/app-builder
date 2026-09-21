@@ -16,6 +16,10 @@ from .tasks import BuildTask, TaskBuilder
 from .tester import Tester
 
 
+class JobCancelled(Exception):
+    """Raised when a running background mission receives a cancellation request."""
+
+
 class Manager:
     def __init__(self, workspace: str = "workspace", max_retries: int = 2, progress_callback=None):
         self.workspace = Path(workspace)
