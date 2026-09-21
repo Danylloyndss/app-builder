@@ -111,7 +111,7 @@ class BuildEngine:
         }
         schema = self._generic_backend_schema(mission)
         self.project.write_file("backend.py", self._generic_backend(mission, schema))
-        self.project.write_file("tests/test_backend_integration.py", self._generic_backend_test())
+        self.project.write_file("tests/test_backend_integration.py", self._generic_backend_test(schema))
         self.project.write_file(".app-builder/backend.json", json.dumps({**manifest, "schema": ".app-builder/backend_schema.json"}, indent=2) + "\n")
         self.project.write_file(".app-builder/backend_schema.json", json.dumps(schema, indent=2) + "\n")
         self.project.write_file("api_contract.json", self._generic_api_contract(schema))
@@ -249,8 +249,21 @@ if __name__ == "__main__":
         return source.replace("__SCHEMA__", repr(schema_json))
 
     @staticmethod
-    def _generic_backend_test() -> str:
-        return '''import json
+    def _generic_backend_test(schema: dict | None = None) -> str:
+        schema = schema or {"entity": "ApplicationRecord", "entities": ["ApplicationRecord"], "entity_fields": {"ApplicationRecord": ["id", "date", "location", "note"]}}
+    entity = str(schema.get("entity") or "ApplicationRecord")
+    resource = re.sub(r"(?<!^)(?=[A-Z])", "_", entity).lower().replace("_", "-")
+    fields = [str(x) for x in (schema.get("entity_fields") or {}).get(entity, schema.get("fields", ["id"])) if str(x) != "id"]
+    sample = {}
+    for field in fields:
+        if field == "email": sample[field] = "test@example.com"
+        elif field.endswith("_id"): sample[field] = 1
+        elif "amount" in field or field in {"price", "total", "hours"}: sample[field] = 1
+        elif "date" in field: sample[field] = "2026-01-02"
+        else: sample[field] = "Test"
+    sample_json = json.dumps(sample, ensure_ascii=False)
+    update_json = json.dumps({**sample, next(iter(fields), "note"): "Updated"}, ensure_ascii=False)
+    return f'''import json
 import os
 import socket
 import subprocess
