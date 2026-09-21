@@ -17,6 +17,7 @@ class AppSpecification:
     screens: list[str] = field(default_factory=list)
     features: list[str] = field(default_factory=list)
     data_entities: list[str] = field(default_factory=list)
+    entity_fields: dict[str, list[str]] = field(default_factory=dict)
     business_rules: list[str] = field(default_factory=list)
     integrations: list[str] = field(default_factory=list)
     security_requirements: list[str] = field(default_factory=list)
@@ -65,6 +66,7 @@ class SpecificationBuilder:
         screens = ["Main"]
         users = ["User"]
         entities: list[str] = []
+        entity_fields: dict[str, list[str]] = {}
         rules = {
             "authentication": ("login", "sign in", "account", "senha", "connexion"),
             "data storage": ("database", "data", "dados", "save", "store", "persist"),
@@ -85,6 +87,8 @@ class SpecificationBuilder:
         if "authentication" in features: screens.append("Login")
         if "data storage" in features:
             entities.extend(self._infer_entities(text))
+            entity_fields = self._infer_entity_fields(entities, lower)
+        business_rules = self._infer_business_rules(lower, features, entity_fields)
         security = ["Never expose secrets in generated source code", "Validate user-controlled input"]
         if "authentication" in features:
             security.append("Require explicit human approval before external account/login actions")
@@ -99,8 +103,8 @@ class SpecificationBuilder:
             app_name=self._app_name(text),
             app_type="web",
             platforms=["web", "mobile-web"] if "mobile" in features else ["web"],
-            users=users, screens=screens, features=features, data_entities=entities,
-            security_requirements=security, acceptance_criteria=acceptance,
+            users=users, screens=screens, features=features, data_entities=entities, entity_fields=entity_fields,
+            business_rules=business_rules, security_requirements=security, acceptance_criteria=acceptance,
         )
 
     @staticmethod
@@ -134,6 +138,39 @@ class SpecificationBuilder:
                 candidates.append(entity)
         return candidates or ["ApplicationRecord"]
 
+    @staticmethod
+    def _infer_entity_fields(entities: list[str], lower: str) -> dict[str, list[str]]:
+        catalog = {
+            "Expense": ["id", "date", "amount", "description", "category"],
+            "Client": ["id", "name", "email", "phone", "note"],
+            "Customer": ["id", "name", "email", "phone", "note"],
+            "Product": ["id", "name", "price", "sku", "description"],
+            "Order": ["id", "date", "customer_id", "total", "status"],
+            "Employee": ["id", "name", "email", "role"],
+            "Appointment": ["id", "date", "time", "client_id", "note"],
+            "Task": ["id", "title", "description", "status", "due_date"],
+            "Project": ["id", "name", "description", "status", "due_date"],
+            "Invoice": ["id", "number", "date", "client_id", "amount", "status"],
+            "ApplicationRecord": ["id", "date", "location", "note"],
+        }
+        return {entity: list(catalog.get(entity, ["id", "name", "note"])) for entity in entities}
+
+    @staticmethod
+    def _infer_business_rules(lower: str, features: list[str], entity_fields: dict[str, list[str]]) -> list[str]:
+        rules = []
+        if "calculation" in features or any(key in lower for key in ("amount", "price", "total", "hours", "horas")):
+            rules.append("Numeric totals and amounts must be zero or positive")
+        if "expense" in lower or "despesa" in lower:
+            rules.append("Expense amount must be zero or positive")
+        if "appointment" in lower or "agendamento" in lower:
+            rules.append("Appointment date and time are required")
+        if "invoice" in lower or "fatura" in lower:
+            rules.append("Invoice amount must be zero or positive")
+        if "order" in lower or "pedido" in lower:
+            rules.append("Order total must be zero or positive")
+        if "authentication" in features:
+            rules.append("Authenticated actions require an identified user")
+        return list(dict.fromkeys(rules))
     @staticmethod
     def _app_name(mission: str) -> str:
         words = mission.strip().split()
