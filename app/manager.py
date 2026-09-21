@@ -82,8 +82,13 @@ class Manager:
 
     def _load_tasks(self) -> list[BuildTask]:
         path = self.workspace / ".app-builder" / "tasks.json"
-        if not path.exists(): return self._prepare_project(self.memory.mission)
-        return [BuildTask(**item) for item in json.loads(path.read_text(encoding="utf-8"))]
+        if not path.exists():
+            return self._prepare_project(self.memory.mission)
+        tasks = [BuildTask(**item) for item in json.loads(path.read_text(encoding="utf-8"))]
+        # A resumed mission must never execute a graph that was changed or
+        # corrupted after it was generated. Validate the persisted graph again.
+        self.tasks.validate_graph(tasks)
+        return tasks
 
     def _save_tasks(self, tasks: list[BuildTask]) -> None:
         self.tasks.save(tasks, self.workspace / ".app-builder" / "tasks.json")
