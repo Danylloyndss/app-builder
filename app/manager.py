@@ -244,6 +244,11 @@ class Manager:
                 if approved:
                     self.memory.task_statuses[task.id] = "pending"
                     task.status = "pending"
+                else:
+                    self.memory.status = "waiting_for_approval"
+                    self.memory.current_task = task.title
+                    self.memory.save(self.memory_path)
+                    return self.memory
             self._save_tasks(tasks); self.memory.save(self.memory_path)
         while True:
             task = self._find_next_task(tasks)
