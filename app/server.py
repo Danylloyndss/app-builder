@@ -57,6 +57,15 @@ class Handler(BaseHTTPRequestHandler):
         body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type",row["mime_type"]); self.send_header("Content-Disposition",f'inline; filename="{Path(row["filename"]).name}"'); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _authorized(self):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
+    def _start_background(self, mission, resume=False):
+        def worker():
+            if not RUN_LOCK.acquire(blocking=False):
+                return
+            try:
+                Manager(workspace=WORKSPACE).run(mission, resume=resume)
+            finally:
+                RUN_LOCK.release()
+        threading.Thread(target=worker, name="app-builder-worker", daemon=True).start()
     def _status_payload(self,memory): return {"mission":memory.mission,"status":memory.status,"current_task":memory.current_task,"plan":memory.plan,"completed":memory.completed,"errors":memory.errors,"task_statuses":memory.task_statuses,"history":memory.history[-20:],"approvals":APPROVALS.list_pending()}
     def _artifact_files(self):
         root=Path(WORKSPACE); return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts) if root.exists() else []
@@ -98,7 +107,7 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=="/api/timepro/timesheets": self._send(201,{"timesheet":TIMEPRO.create_timesheet(data)}); return
             if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64", ""))}); return
             if parsed.path=="/api/timepro/signature": TIMEPRO.save_signature(data.get("timesheet_id"),data.get("content_base64","")); self._send(201,{"saved":True}); return
-            if parsed.path in ("/run","/resume"):
+            if parsed.path in ("/run","/resume","/run/background","/resume/background"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
                 if not RUN_LOCK.acquire(blocking=False): self._send(409,{"error":"another build is already running"}); return
