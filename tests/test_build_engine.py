@@ -2,6 +2,8 @@ import json
 import tempfile
 import unittest
 import py_compile
+import subprocess
+import sys
 from pathlib import Path
 
 from app.build_engine import BuildEngine
@@ -68,6 +70,12 @@ class BuildEngineTests(unittest.TestCase):
             self.assertEqual(manifest["schema"], ".app-builder/backend_schema.json")
             self.assertEqual(contract["resources"]["records"]["fields"], schema["fields"])
             py_compile.compile(str(Path(temp_dir) / "backend.py"), doraise=True)
+            py_compile.compile(str(Path(temp_dir) / "tests" / "test_backend_integration.py"), doraise=True)
+            integration = subprocess.run(
+                [sys.executable, str(Path(temp_dir) / "tests" / "test_backend_integration.py")],
+                cwd=temp_dir, capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(integration.returncode, 0, integration.stderr or integration.stdout)
             backend = (Path(temp_dir) / "backend.py").read_text(encoding="utf-8")
             self.assertIn("SCHEMA", backend)
             self.assertIn("ApplicationRecord", backend)
