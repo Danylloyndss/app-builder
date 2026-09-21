@@ -34,6 +34,10 @@ class TimeProService:
         columns = self.db.fetch_all("PRAGMA table_info(timesheets)")
         if not any(c["name"] == "company" for c in columns):
             self.db.execute("ALTER TABLE timesheets ADD COLUMN company TEXT NOT NULL DEFAULT ''")
+        attachment_columns = self.db.fetch_all("PRAGMA table_info(timesheet_attachments)")
+        if not any(c["name"] == "client_id" for c in attachment_columns):
+            self.db.execute("ALTER TABLE timesheet_attachments ADD COLUMN client_id TEXT NOT NULL DEFAULT ''")
+        self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_timesheet_attachment_client ON timesheet_attachments(client_id) WHERE client_id <> ''")
 
     def _validate_payload(self, payload: dict):
         employee, company = str(payload.get("employee", "")).strip(), str(payload.get("company", "")).strip()
@@ -109,7 +113,12 @@ class TimeProService:
         rows = self.history(employee, company, date_from, date_to)
         return {"count":len(rows),"total_minutes":sum(int(r["total_minutes"]) for r in rows),"employees":sorted({r["employee"] for r in rows}),"companies":sorted({r["company"] for r in rows if r.get("company")}),"timesheets":rows}
 
-    def add_attachment(self, timesheet_id: int, filename: str, mime_type: str, content_b64: str) -> dict:
+    def add_attachment(self, timesheet_id: int, filename: str, mime_type: str, content_b64: str, client_id: str = "") -> dict:
+        client_id = str(client_id or "").strip()
+        if len(client_id) > 120: raise TimeProValidationError("client_id is too long")
+        if client_id:
+            existing = self.db.fetch_one("SELECT id,filename,mime_type,created_at FROM timesheet_attachments WHERE client_id=?", (client_id,))
+            if existing: return existing
         try: record_id=int(timesheet_id); raw=base64.b64decode(content_b64, validate=True)
         except (TypeError, ValueError, binascii.Error): raise TimeProValidationError("invalid attachment")
         if not self.db.fetch_one("SELECT id FROM timesheets WHERE id=?",(record_id,)): raise TimeProValidationError("timesheet not found")
@@ -122,8 +131,15 @@ class TimeProService:
         if ext==".webp" and not (raw.startswith(b"RIFF") and len(raw)>=12 and raw[8:12]==b"WEBP"): raise TimeProValidationError("file content does not match its extension")
         token=secrets.token_hex(8); stored=self.root/f"{record_id}_{token}{ext}"; stored.write_bytes(raw)
         detected=mimetypes.guess_type(safe)[0] or "application/octet-stream"
-        self.db.execute("INSERT INTO timesheet_attachments(timesheet_id,filename,stored_path,mime_type) VALUES(?,?,?,?)",(record_id,safe, str(stored), detected))
+        self.db.execute("INSERT INTO timesheet_attachments(timesheet_id,filename,stored_path,mime_type,client_id) VALUES(?,?,?,?,?)",(record_id,safe, str(stored), detected, client_id))
         return self.db.fetch_one("SELECT id,filename,mime_type,created_at FROM timesheet_attachments WHERE id=last_insert_rowid()") or {}
+
+    def get_signature(self, timesheet_id: int) -> dict | None:
+        try: record_id = int(timesheet_id)
+        except (TypeError, ValueError): raise TimeProValidationError("timesheet id must be an integer")
+        row = self.db.fetch_one("SELECT stored_path FROM timesheet_signatures WHERE timesheet_id=?", (record_id,))
+        if not row or not Path(row["stored_path"]).is_file(): return None
+        return {"stored_path": row["stored_path"]}
 
     def save_signature(self, timesheet_id: int, content_b64: str) -> bool:
         try: record_id=int(timesheet_id); raw=base64.b64decode(content_b64, validate=True)
