@@ -22,7 +22,7 @@ def _save_jobs(jobs):
 
 def _enqueue_job(mission,resume=False):
     from datetime import datetime,timezone
-    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":""}; jobs.append(job); _save_jobs(jobs); return job
+    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":""}; jobs.append(job); _save_jobs(jobs); return job
 
 def _run_pending_jobs():
     if not RUN_LOCK.acquire(blocking=False): return
@@ -38,10 +38,10 @@ def _run_pending_jobs():
             jobs=_load_jobs(); job=next((j for j in jobs if j.get("status")=="pending"),None)
             if not job:
                 return
-            job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+            job["status"]="running"; job["started_at"]=datetime.now(timezone.utc).isoformat(); job["attempts"]=int(job.get("attempts",0))+1; _save_jobs(jobs)
             try:
-                Manager(workspace=WORKSPACE).run(job["mission"],resume=bool(job.get("resume")))
-                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="completed"; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
+                memory=Manager(workspace=WORKSPACE).run(job["mission"],resume=bool(job.get("resume")))
+                jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="completed"; current["result_status"]=memory.status; current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
             except Exception as exc:
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="failed"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
     finally: RUN_LOCK.release()
