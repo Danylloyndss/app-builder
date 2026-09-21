@@ -130,6 +130,14 @@ class Handler(BaseHTTPRequestHandler):
         parsed=urlparse(self.path)
         if parsed.path=="/api/timepro/export.csv": self._send_csv(); return\n        if parsed.path=="/api/timepro/export.pdf": self._send_pdf(); return
         if parsed.path=="/api/timepro/attachments": self._send_attachment(); return
+        if parsed.path=="/api/timepro/signature":
+            record_id=self._timepro_id()
+            if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
+            signature=TIMEPRO.get_signature(record_id)
+            if not signature: self._send(404,{"error":"signature not found"}); return
+            path=Path(signature["stored_path"]).resolve(); root=TIMEPRO.root.resolve()
+            if root not in path.parents or not path.is_file(): self._send(404,{"error":"signature not found"}); return
+            body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type","image/png"); self.send_header("Content-Disposition","inline; filename=signature.png"); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
         if parsed.path=="/api/timepro/timesheet":
             record_id=self._timepro_id()
             if record_id is None: self._send(400,{"error":"timesheet id is required"}); return
@@ -146,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorized(): self._send(401,{"error":"authentication required"}); return
             data=self._read_json(); parsed=urlparse(self.path)
             if parsed.path=="/api/timepro/timesheets": self._send(201,{"timesheet":TIMEPRO.create_timesheet(data)}); return
-            if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64", ""))}); return
+            if parsed.path=="/api/timepro/attachments": self._send(201,{"attachment":TIMEPRO.add_attachment(data.get("timesheet_id"),data.get("filename",""),data.get("mime_type",""),data.get("content_base64", ""),data.get("client_id",""))}); return
             if parsed.path=="/api/timepro/signature": TIMEPRO.save_signature(data.get("timesheet_id"),data.get("content_base64","")); self._send(201,{"saved":True}); return
             if parsed.path=="/jobs/retry":
                 job_id=str(data.get("id","")).strip(); jobs=_load_jobs(); job=next((j for j in jobs if j.get("id")==job_id),None)
