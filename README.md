@@ -22,6 +22,8 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 - Build concurrency protection so two missions cannot mutate the same workspace simultaneously.
 - Artifact inventory at `GET /artifacts` and downloadable build bundle at `GET /artifacts.zip`.
 - Railway healthcheck, restart policy, automated tests and pre-deploy tests.
+- Durable worker recovery diagnostics, resumable jobs and artifact-integrity verification before mission resume.
+- GitHub Actions CI runs Python compilation and the complete unittest suite on pushes and pull requests.
 - Dependency-free SQLite database adapter with transactional CRUD operations.
 - TimePro persistence schema with indexes for employee and work-date queries.
 - Architecture now selects a real persistence boundary for apps that require data storage.
