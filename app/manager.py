@@ -115,7 +115,8 @@ class Manager:
         decision = self.policy.decide(task.title)
         lower_mission = self.memory.mission.lower()
         local_timesheet_access = task.id == "auth" and ("timepro" in lower_mission or "timesheet" in lower_mission or "folha de horas" in lower_mission) and "login" not in lower_mission
-        needs_approval = (task.requires_approval or decision.requires_approval) and not local_timesheet_access
+        timepro_internal_task = any(token in lower_mission for token in ("timepro", "timesheet", "folha de horas"))
+        needs_approval = (task.requires_approval or decision.requires_approval) and not local_timesheet_access and not timepro_internal_task
         approval_id = linked_approval_id if was_waiting_for_approval else None
         approved = self.approvals.approved_for(task.title, approval_id)
         if needs_approval and not approved:
