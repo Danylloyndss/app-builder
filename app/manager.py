@@ -242,10 +242,20 @@ class Manager:
                 if self.memory.task_statuses.get(task.id) != "waiting_for_approval":
                     continue
                 approval_id = self.memory.diagnostics.get("approval_id") if self.memory.diagnostics.get("approval_task_id") == task.id else None
-                approved = self.approvals.approved_for(task.title, approval_id)
-                if approved:
+                decision = self.approvals.decision_for(task.title, approval_id)
+                if decision and decision.get("status") == "approved":
                     self.memory.task_statuses[task.id] = "pending"
                     task.status = "pending"
+                elif decision and decision.get("status") == "rejected":
+                    self.memory.task_statuses[task.id] = "blocked"
+                    task.status = "blocked"
+                    self.memory.status = "blocked"
+                    self.memory.current_task = task.title
+                    self.memory.diagnostics["approval_rejected"] = True
+                    self.memory.record("approval_rejected", request_id=decision.get("id"), task_id=task.id, task=task.title)
+                    self._save_tasks(tasks)
+                    self.memory.save(self.memory_path)
+                    return self.memory
                 else:
                     self.memory.status = "waiting_for_approval"
                     self.memory.current_task = task.title
