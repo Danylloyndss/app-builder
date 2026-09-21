@@ -110,7 +110,7 @@ class BuildEngine:
             "capabilities": ["crud", "health"],
         }
         schema = self._generic_backend_schema(mission)
-        self.project.write_file("backend.py", self._generic_backend(mission))
+        self.project.write_file("backend.py", self._generic_backend(mission, schema))
         self.project.write_file("tests/test_backend_integration.py", self._generic_backend_test())
         self.project.write_file(".app-builder/backend.json", json.dumps({**manifest, "schema": ".app-builder/backend_schema.json"}, indent=2) + "\n")
         self.project.write_file(".app-builder/backend_schema.json", json.dumps(schema, indent=2) + "\n")
@@ -306,8 +306,10 @@ if __name__ == "__main__":
         }, indent=2) + "\n"
 
     @staticmethod
-    def _generic_backend() -> str:
-        return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
+        schema = schema or {"entity": "ApplicationRecord", "fields": ["id"], "business_rules": []}
+        schema_json = json.dumps(schema, ensure_ascii=False)
+        return f"""from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import sqlite3
