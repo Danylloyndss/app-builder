@@ -35,6 +35,15 @@ class TaskBuilderTests(unittest.TestCase):
             self.assertEqual(data[0]["id"], "spec")
             self.assertIn("acceptance", data[-1])
 
+
+    def test_backend_storage_task_has_approval_flag_boolean(self):
+        spec = SpecificationBuilder().build("Create a notes app with data storage")
+        architecture = ArchitectureBuilder().build(spec)
+        tasks = TaskBuilder().build(spec, architecture)
+        backend = next(task for task in tasks if task.id == "backend")
+        self.assertIs(backend.requires_approval, False)
+        self.assertEqual(backend.acceptance, ["Persistence boundary is explicitly defined"])
+
     def test_graph_validation_rejects_unknown_dependency(self):
         spec = SpecificationBuilder().build("Create a simple notes app")
         architecture = ArchitectureBuilder().build(spec)
