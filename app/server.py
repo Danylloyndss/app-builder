@@ -73,6 +73,8 @@ def _run_pending_jobs():
                         current_now["current_task"]=memory.current_task
                         current_now["result_status"]=state
                         current_now["completed_count"]=len(memory.completed)
+                        current_now["diagnostics"]=dict(memory.diagnostics)
+                        current_now["diagnostics"]["last_worker_heartbeat"]=datetime.now(timezone.utc).isoformat()
                         current_now["error_count"]=len(memory.errors)
                         current_now["diagnostics"]=dict(memory.diagnostics)
                         if state=="waiting_for_approval":
