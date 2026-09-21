@@ -36,8 +36,15 @@ class Manager:
 
     def _progress(self, status=None):
         if self.progress_callback:
-            try: self.progress_callback(self.memory, status or self.memory.status)
-            except Exception: pass
+            try:
+                self.progress_callback(self.memory, status or self.memory.status)
+            except JobCancelled:
+                raise
+            except Exception:
+                pass
+
+    def _check_cancelled(self):
+        self._progress("running")
 
     def _prepare_project(self, mission: str) -> list[BuildTask]:
         artifact_dir = self.workspace / ".app-builder"
@@ -100,9 +107,11 @@ class Manager:
         if not decision.allowed and not decision.requires_approval:
             self.memory.task_statuses[task.id] = "blocked"; task.status = "blocked"; self.memory.status = "blocked"; self.memory.errors.append(decision.reason); self.memory.record("action_blocked", task_id=task.id, reason=decision.reason); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
         try:
+            self._check_cancelled()
             if task.id == "test":
                 ok, message = self.tester.test(self.workspace); attempts = 0
                 while not ok and attempts < self.max_retries:
+                    self._check_cancelled()
                     attempts += 1; self.memory.errors.append(f"Attempt {attempts}: {message}"); self.memory.record("repair", attempt=attempts, error=message); self.executor.execute("Repair after test failure", self.workspace, self.memory.mission); ok, message = self.tester.test(self.workspace)
                 if not ok:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self._progress("failed"); self.memory.errors.append(message); self.memory.record("tests_failed", task_id=task.id, message=message); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
@@ -114,10 +123,17 @@ class Manager:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append("Acceptance checks failed"); self.memory.record("acceptance_failed", task_id=task.id); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = "Acceptance checks passed"
             else: result = self.executor.execute(task.title, self.workspace, self.memory.mission)
+            self._check_cancelled()
             self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running"); self.memory.completed.append(result)
             if approved: self.approvals.consume(approved["id"]); self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
             if local_timesheet_access: self.memory.record("local_access_task", task_id=task.id, approval="not_required_external_action")
             self.memory.record("task_completed", task_id=task.id, title=task.title, result=result); self._save_tasks(tasks); self.memory.save(self.memory_path); return True
+        except JobCancelled:
+            self.memory.task_statuses[task.id] = "cancelled"; task.status = "cancelled"
+            self.memory.status = "cancelled"
+            self.memory.record("task_cancelled", task_id=task.id, title=task.title)
+            self._save_tasks(tasks); self.memory.save(self.memory_path)
+            raise
         except Exception as exc:
             self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append(f"Task {task.id} failed: {exc}"); self.memory.record("task_failed", task_id=task.id, error=str(exc))
             checkpoint = self.checkpoints.latest()
@@ -141,6 +157,7 @@ class Manager:
                 if waiting: self.memory.status="waiting_for_approval"; self.memory.current_task=waiting[0].title; self.memory.save(self.memory_path); return self.memory
                 if failed: self.memory.status="completed_with_errors"; self.memory.current_task=failed[0].title; self.memory.save(self.memory_path); return self.memory
                 break
+            self._check_cancelled()
             if not self._execute_task(task,tasks):
                 if self.memory.status in {"waiting_for_approval","blocked"} or self.memory.task_statuses.get(task.id)=="failed":
                     if self.memory.task_statuses.get(task.id)=="failed": self.memory.status="completed_with_errors"
