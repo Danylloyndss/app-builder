@@ -79,12 +79,13 @@ class BuildEngine:
             return "Implemented TimePro functional MVP with backend contract"
         title = self._title(mission)
         features = self.detect_features(mission)
-        self.project.write_file("index.html", self._html(title, mission, features))
+        schema = self._generic_backend_schema(mission) if "storage" in features else None
+        self.project.write_file("index.html", self._html(title, mission, features, schema))
         self.project.write_file("app.js", self._javascript(features))
         self.project.write_file("README.md", self._readme(mission, features))
         self.project.write_file("hello_app.txt", f"{title}\n")
-        if "storage" in features:
-            self.project.write_file("api_contract.json", self._generic_api_contract())
+        if schema is not None:
+            self.project.write_file("api_contract.json", self._generic_api_contract(schema))
         self.project.write_file(".app-builder/mission.txt", mission + "\n")
         self._save_features(features)
         return f"Implemented generated app: {title} ({len(features)} features)"
@@ -658,7 +659,7 @@ Les données sont stockées dans `localStorage`. L’authentification, une vraie
         return "\n".join(lines) + "\n"
 
     @staticmethod
-    def _html(title: str, mission: str = "", features: list[str] | None = None) -> str:
+    def _html(title: str, mission: str = "", features: list[str] | None = None, schema: dict | None = None) -> str:
         features = features or []
         safe_title = escape(title)
         safe_description = escape(mission or "Generated project")
@@ -666,7 +667,16 @@ Les données sont stockées dans `localStorage`. L’authentification, une vraie
         if "auth" in features:
             sections.append('<form data-login><h2>Sign in</h2><input name="email" type="email" placeholder="Email" required><input name="password" type="password" placeholder="Password" required><button>Sign in</button></form>')
         if "forms" in features:
-            sections.append('<form data-save><h2>New entry</h2><input name="date" type="date"><input name="location" placeholder="Location / site"><input id="start" name="start" type="time"><input name="break" type="number" min="0" placeholder="Break (minutes)"><input id="end" name="end" type="time"><textarea name="note" placeholder="Optional note"></textarea><button>Save</button></form>')
+            fields = ((schema or {}).get("entity_fields") or {}).get((schema or {}).get("entity") or "", [])
+            if not fields:
+                fields = ["date", "location", "note"]
+            inputs = []
+            for field_name in fields:
+                if field_name == "id":
+                    continue
+                input_type = "number" if field_name in {"amount", "price", "total", "hours"} else "email" if field_name == "email" else "date" if field_name in {"date", "due_date"} else "time" if field_name in {"time", "start", "end"} else "text"
+                inputs.append(f'<label>{escape(field_name.replace("_", " ").title())}<input name="{escape(field_name)}" type="{input_type}"></label>')
+            sections.append('<form data-save><h2>New entry</h2>' + ''.join(inputs) + '<button>Save</button></form>')
         if "calculator" in features:
             sections.append('<section><h2>Total</h2><strong id="total">0h 0min</strong></section>')
         if "list" in features:
