@@ -119,7 +119,7 @@ class BuildEngine:
 
     @staticmethod
     def _generic_backend(mission: str = "", schema: dict | None = None) -> str:
-        schema = schema or {"entity": "ApplicationRecord", "fields": ["id"], "business_rules": []}
+        schema = schema or {"entity": "ApplicationRecord", "entities": ["ApplicationRecord"], "fields": ["id"], "entity_fields": {"ApplicationRecord": ["id"]}, "business_rules": []}
         schema_json = json.dumps(schema, ensure_ascii=False)
         source = """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -138,8 +138,14 @@ def init_db():
         db.execute("CREATE TABLE IF NOT EXISTS entity_records (id INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_entity_records_entity ON entity_records(entity)")
 
+def entity_name():
+    return str(SCHEMA.get("entity") or "ApplicationRecord")
+
+def resource_path():
+    return "/api/records"
+
 def payload(row):
-    return {"id": row[0], **json.loads(row[1]), "created_at": row[2]}
+    return {"id": row[0], **json.loads(row[1]), "created_at": row[2], "_entity": row[3]}
 
 def validate(data):
     if not isinstance(data, dict):
@@ -148,16 +154,16 @@ def validate(data):
     unknown = [key for key in data if key not in fields]
     if unknown:
         raise ValueError("unknown fields: " + ", ".join(sorted(unknown)))
-    rules = [str(x).lower() for x in SCHEMA.get("business_rules", [])]
-    if any("break" in rule and "zero" in rule for rule in rules):
-        for key in ("break", "pause", "pause_minutes"):
-            if key in data and int(data[key]) < 0:
-                raise ValueError("break must be zero or positive")
+    for rule in [str(x).lower() for x in SCHEMA.get("business_rules", [])]:
+        if ("zero or positive" in rule or "non-negative" in rule) and any(key in data for key in ("amount", "price", "total", "hours", "pause", "pause_minutes", "break")):
+            for key in ("amount", "price", "total", "hours", "pause", "pause_minutes", "break"):
+                if key in data and float(data[key]) < 0:
+                    raise ValueError(key + " must be zero or positive")
     return data
 
 def save(data, record_id=None):
     encoded = json.dumps(data, ensure_ascii=False)
-    entity = str(SCHEMA.get("entity") or "ApplicationRecord")
+    entity = entity_name()
     with sqlite3.connect(DB) as db:
         if record_id is None:
             cur = db.execute("INSERT INTO entity_records (entity, data) VALUES (?, ?)", (entity, encoded))
@@ -166,67 +172,53 @@ def save(data, record_id=None):
             changed = db.execute("UPDATE entity_records SET data=? WHERE id=? AND entity=?", (encoded, record_id, entity)).rowcount
             if not changed:
                 return None
-        return db.execute("SELECT id, data, created_at FROM entity_records WHERE id=? AND entity=?", (record_id, entity)).fetchone()
+        return db.execute("SELECT id, data, created_at, entity FROM entity_records WHERE id=? AND entity=?", (record_id, entity)).fetchone()
 
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, value):
         raw = json.dumps(value, ensure_ascii=False).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
+        self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0"))
-        if length > 1000000:
-            raise ValueError("request too large")
+        if length > 1000000: raise ValueError("request too large")
         return json.loads(self.rfile.read(length) or b"{}")
 
     def do_GET(self):
-        path = urlparse(self.path).path
-        if path == "/health":
-            return self.send_json(200, {"ok": True, "entity": SCHEMA.get("entity")})
-        if path == "/api/records":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
+            return self.send_json(200, {"ok": True, "entity": entity_name(), "schema_version": SCHEMA.get("version", 1)})
+        if parsed.path == resource_path():
             with sqlite3.connect(DB) as db:
-                rows = db.execute("SELECT id, data, created_at FROM entity_records WHERE entity=? ORDER BY id DESC", (str(SCHEMA.get("entity") or "ApplicationRecord"),)).fetchall()
+                rows = db.execute("SELECT id, data, created_at, entity FROM entity_records WHERE entity=? ORDER BY id DESC", (entity_name(),)).fetchall()
             return self.send_json(200, [payload(row) for row in rows])
         return self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/records":
-            return self.send_json(404, {"error": "not found"})
-        try:
-            row = save(validate(self.read_json()))
-            return self.send_json(201, payload(row))
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            return self.send_json(400, {"error": str(exc)})
+        if urlparse(self.path).path != resource_path(): return self.send_json(404, {"error": "not found"})
+        try: return self.send_json(201, payload(save(validate(self.read_json()))))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
 
     def do_PUT(self):
-        if urlparse(self.path).path != "/api/records":
-            return self.send_json(404, {"error": "not found"})
+        parsed = urlparse(self.path)
+        if parsed.path != resource_path(): return self.send_json(404, {"error": "not found"})
         try:
             data = self.read_json()
-            record_id = int(data.pop("id", parse_qs(urlparse(self.path).query).get("id", ["0"])[0]))
-            data = validate(data)
-            if record_id <= 0:
-                return self.send_json(400, {"error": "id is required"})
-            row = save(data, record_id)
+            record_id = int(data.pop("id", parse_qs(parsed.query).get("id", ["0"])[0]))
+            if record_id <= 0: return self.send_json(400, {"error": "id is required"})
+            row = save(validate(data), record_id)
             return self.send_json(200, payload(row)) if row else self.send_json(404, {"error": "not found"})
-        except (ValueError, TypeError, json.JSONDecodeError) as exc:
-            return self.send_json(400, {"error": str(exc)})
+        except (ValueError, TypeError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/records":
-            return self.send_json(404, {"error": "not found"})
+        if parsed.path != resource_path(): return self.send_json(404, {"error": "not found"})
         try:
             record_id = int(parse_qs(parsed.query).get("id", ["0"])[0])
             with sqlite3.connect(DB) as db:
-                changed = db.execute("DELETE FROM entity_records WHERE id=? AND entity=?", (record_id, str(SCHEMA.get("entity") or "ApplicationRecord"))).rowcount
+                changed = db.execute("DELETE FROM entity_records WHERE id=? AND entity=?", (record_id, entity_name())).rowcount
             return self.send_json(200, {"deleted": True}) if changed else self.send_json(404, {"error": "not found"})
-        except ValueError:
-            return self.send_json(400, {"error": "id is required"})
+        except ValueError: return self.send_json(400, {"error": "id is required"})
 
 if __name__ == "__main__":
     init_db()
