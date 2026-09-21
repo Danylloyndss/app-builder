@@ -3,6 +3,7 @@
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
+import re
 
 
 @dataclass
@@ -37,8 +38,9 @@ class QualityGate:
             else:
                 errors.append(f"Missing or empty required artifact: {filename}")
 
+        skip_dirs = {".git", ".app-builder", "__pycache__", "node_modules"}
         for path in workspace.rglob("*"):
-            if not path.is_file() or ".git" in path.parts:
+            if not path.is_file() or any(part in skip_dirs for part in path.parts):
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
@@ -49,6 +51,20 @@ class QualityGate:
                 errors.append(f"Possible secret marker found in {path.relative_to(workspace)}")
         if not any("secret" in error.lower() for error in errors):
             security.append("No obvious hard-coded secret markers detected")
+
+        # Reject common executable payloads disguised as ordinary project files.
+        dangerous = re.compile(r"(?:^|\n)\s*(?:curl|wget)\s+[^\n]*(?:\||;)\s*(?:sh|bash)|(?:eval\s*\(|os\.system\s*\()", re.I)
+        for path in workspace.rglob("*"):
+            if not path.is_file() or any(part in skip_dirs for part in path.parts):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if dangerous.search(text):
+                errors.append(f"Potentially unsafe executable payload found in {path.relative_to(workspace)}")
+        if not any("unsafe executable" in error.lower() for error in errors):
+            security.append("No obvious shell-download/eval payloads detected")
 
         # The saved specification is the source of truth. Fall back to the
         # mission file for older workspaces that predate spec.json.
