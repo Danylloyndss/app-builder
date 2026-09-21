@@ -128,10 +128,13 @@ with tempfile.TemporaryDirectory() as tmp:
     def _timepro_backend() -> str:
         return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 import sqlite3
 from urllib.parse import urlparse
 
-DB = "timepro.db"
+DB = os.environ.get("TIMEPRO_DB", "timepro.db")
+HOST = os.environ.get("TIMEPRO_HOST", "127.0.0.1")
+PORT = int(os.environ.get("TIMEPRO_PORT", "8001"))
 
 def init_db():
     with sqlite3.connect(DB) as db:
@@ -147,6 +150,9 @@ def total(start, end, pause):
     if value <= 0: raise ValueError("end time must be after start time and pause")
     return value
 
+def row_payload(row):
+    return dict(row)
+
 def create(payload):
     required = ("employee", "work_date", "start_time", "end_time")
     if any(not str(payload.get(k, "")).strip() for k in required): raise ValueError("required field missing")
@@ -154,12 +160,29 @@ def create(payload):
     row = (str(payload["employee"]).strip(), str(payload.get("company", "")).strip(), str(payload["work_date"]).strip(), str(payload.get("location", "")).strip(), str(payload["start_time"]), int(payload.get("pause_minutes", 0)), str(payload["end_time"]), value, str(payload.get("note", "")).strip())
     with sqlite3.connect(DB) as db:
         cur = db.execute("INSERT INTO timesheets (employee, company, work_date, location, start_time, pause_minutes, end_time, total_minutes, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
-        return {"id": cur.lastrowid, "total_minutes": value, "employee": row[0]}
+        return db.execute("SELECT * FROM timesheets WHERE id=?", (cur.lastrowid,)).fetchone()
+
+def update(record_id, payload):
+    value = total(payload["start_time"], payload["end_time"], payload.get("pause_minutes", 0))
+    with sqlite3.connect(DB) as db:
+        changed = db.execute("UPDATE timesheets SET employee=?, company=?, work_date=?, location=?, start_time=?, pause_minutes=?, end_time=?, total_minutes=?, note=? WHERE id=?", (str(payload["employee"]).strip(), str(payload.get("company", "")).strip(), str(payload["work_date"]).strip(), str(payload.get("location", "")).strip(), str(payload["start_time"]), int(payload.get("pause_minutes", 0)), str(payload["end_time"]), value, str(payload.get("note", "")).strip(), record_id)).rowcount
+        if not changed: return None
+        return db.execute("SELECT * FROM timesheets WHERE id=?", (record_id,)).fetchone()
+
+def delete(record_id):
+    with sqlite3.connect(DB) as db:
+        return db.execute("DELETE FROM timesheets WHERE id=?", (record_id,)).rowcount > 0
 
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status, payload):
         raw = json.dumps(payload).encode()
         self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+
+    def read_json(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > 1000000: raise ValueError("request too large")
+        return json.loads(self.rfile.read(length) or b"{}")
+
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/health": return self.send_json(200, {"ok": True})
@@ -167,15 +190,45 @@ class Handler(BaseHTTPRequestHandler):
             with sqlite3.connect(DB) as db:
                 db.row_factory = sqlite3.Row
                 return self.send_json(200, [dict(r) for r in db.execute("SELECT * FROM timesheets ORDER BY id DESC").fetchall()])
+        if path == "/api/timepro/dashboard":
+            with sqlite3.connect(DB) as db:
+                db.row_factory = sqlite3.Row
+                rows = [dict(r) for r in db.execute("SELECT * FROM timesheets ORDER BY id DESC").fetchall()]
+            return self.send_json(200, {"count": len(rows), "total_minutes": sum(int(r["total_minutes"]) for r in rows), "employees": sorted({r["employee"] for r in rows}), "timesheets": rows})
         return self.send_json(404, {"error": "not found"})
+
     def do_POST(self):
-        if urlparse(self.path).path != "/api/timepro/timesheets": return self.send_json(404, {"error": "not found"})
+        path = urlparse(self.path).path
+        if path != "/api/timepro/timesheets": return self.send_json(404, {"error": "not found"})
         try:
-            length = int(self.headers.get("Content-Length", "0")); payload = json.loads(self.rfile.read(length) or b"{}"); return self.send_json(201, create(payload))
-        except (ValueError, TypeError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
+            payload = self.read_json()
+            return self.send_json(201, row_payload(create(payload)))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
+
+    def do_PUT(self):
+        path = urlparse(self.path).path
+        if path != "/api/timepro/timesheets": return self.send_json(404, {"error": "not found"})
+        try:
+            payload = self.read_json()
+            record_id = int(payload.pop("id", 0))
+            if record_id <= 0: return self.send_json(400, {"error": "id is required"})
+            updated = update(record_id, payload)
+            return self.send_json(200, row_payload(updated)) if updated else self.send_json(404, {"error": "not found"})
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            return self.send_json(400, {"error": str(exc)})
+
+    def do_DELETE(self):
+        path = urlparse(self.path).path
+        if path != "/api/timepro/timesheets": return self.send_json(404, {"error": "not found"})
+        try:
+            record_id = int(urlparse(self.path).query.split("=", 1)[1])
+            return self.send_json(200, {"deleted": True}) if delete(record_id) else self.send_json(404, {"error": "not found"})
+        except (ValueError, IndexError):
+            return self.send_json(400, {"error": "id is required"})
 
 if __name__ == "__main__":
-    init_db(); ThreadingHTTPServer(("127.0.0.1", 8001), Handler).serve_forever()
+    init_db(); ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 """
     def implement_feature(self, feature: str, mission: str) -> str:
         files = self.project.list_files(".")
