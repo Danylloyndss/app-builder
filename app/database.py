@@ -96,8 +96,19 @@ CREATE TABLE IF NOT EXISTS timesheet_signatures (
 """
 
 
+def migrate_timepro_database(db: Database) -> None:
+    """Upgrade older TimePro databases without destroying existing data."""
+    columns = {row["name"] for row in db.fetch_all("PRAGMA table_info(timesheets)")}
+    if "company" not in columns:
+        db.execute("ALTER TABLE timesheets ADD COLUMN company TEXT NOT NULL DEFAULT ''")
+    if "idempotency_key" not in columns:
+        db.execute("ALTER TABLE timesheets ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_timesheets_idempotency ON timesheets(idempotency_key) WHERE idempotency_key <> ''")
+
+
 def create_timepro_database(path: str | Path = "data/timepro.db") -> Database:
     """Create/initialize the persistence store used by TimePro."""
     db = Database(path)
     db.initialize(TIMEPRO_SCHEMA)
+    migrate_timepro_database(db)
     return db
