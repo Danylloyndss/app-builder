@@ -44,11 +44,7 @@ def _run_pending_jobs():
                 if stale.get("cancel_requested"):
                     stale["status"]="cancelled"; stale["error"]="Cancelled during worker restart"; stale["finished_at"]=datetime.now(timezone.utc).isoformat()
                 else:
-                    stale["status"]="pending"; stale["error"]="Recovered after worker restart"; stale["started_at"]=None
-                    stale["diagnostics"]=dict(stale.get("diagnostics") or {})
-                    stale["diagnostics"]["recovery_reason"]="worker_restart"
-                    stale["diagnostics"]["recovered_at"]=datetime.now(timezone.utc).isoformat()
-                    stale["diagnostics"]["recovery_count"]=int(stale["diagnostics"].get("recovery_count",0))+1
+                    _recover_stale_job(stale, datetime.now(timezone.utc).isoformat())
                 changed=True
         if changed: _save_jobs(jobs)
         while True:
@@ -93,6 +89,21 @@ def _run_pending_jobs():
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["status"]="failed"; current["error"]=str(exc); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
                 _job_event(current,"failed",str(exc))
     finally: RUN_LOCK.release()
+
+def _recover_stale_job(job, now):
+    """Make worker-recovered jobs explicitly resumable and diagnosable."""
+    if job.get("status") != "running" or job.get("cancel_requested"):
+        return False
+    job["status"] = "pending"
+    job["error"] = "Recovered after worker restart"
+    job["started_at"] = None
+    diagnostics = dict(job.get("diagnostics") or {})
+    diagnostics["recovery_reason"] = "worker_restart"
+    diagnostics["recovered_at"] = now
+    diagnostics["recovery_count"] = int(diagnostics.get("recovery_count", 0)) + 1
+    diagnostics["resume_eligible"] = True
+    job["diagnostics"] = diagnostics
+    return True
 
 def _start_job_worker(): threading.Thread(target=_run_pending_jobs,name="app-builder-job-worker",daemon=True).start()
 
