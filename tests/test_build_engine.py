@@ -84,6 +84,8 @@ class BuildEngineTests(unittest.TestCase):
             backend = (Path(temp_dir) / "backend.py").read_text(encoding="utf-8")
             self.assertIn("SCHEMA", backend)
             self.assertIn("ApplicationRecord", backend)
+            self.assertIn("entity_records", backend)
+            self.assertIn("idx_entity_records_entity", backend)
 
 
 if __name__ == "__main__":
