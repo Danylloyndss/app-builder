@@ -11,6 +11,13 @@ class TimeProApiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             service=TimeProService(Path(tmp)/"timepro.db"); row=service.create_timesheet({"employee":"Danyllo","work_date":"2026-09-17","location":"Neuchâtel","start_time":"08:00","pause_minutes":30,"end_time":"17:00","note":""})
             self.assertEqual(row["total_minutes"],510); history=service.history("Danyllo"); self.assertEqual(len(history),1); self.assertEqual(history[0]["location"],"Neuchâtel")
+    def test_idempotency_returns_same_timesheet(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            service=TimeProService(Path(tmp)/"timepro.db")
+            payload={"employee":"A","work_date":"2026-09-17","start_time":"08:00","end_time":"16:00","idempotency_key":"offline-123"}
+            first=service.create_timesheet(payload); second=service.create_timesheet(payload)
+            self.assertEqual(first["id"],second["id"]); self.assertEqual(len(service.history()),1)
+
     def test_get_timesheet_returns_one_record_with_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:
             service=TimeProService(Path(tmp)/"timepro.db")
