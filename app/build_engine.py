@@ -203,8 +203,9 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path != "/api/records":
             return self.send_json(404, {"error": "not found"})
         try:
-            data = validate(self.read_json())
+            data = self.read_json()
             record_id = int(data.pop("id", parse_qs(urlparse(self.path).query).get("id", ["0"])[0]))
+            data = validate(data)
             if record_id <= 0:
                 return self.send_json(400, {"error": "id is required"})
             row = save(data, record_id)
