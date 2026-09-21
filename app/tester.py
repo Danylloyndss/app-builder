@@ -70,6 +70,17 @@ class Tester:
         else:
             return False, f"JavaScript syntax check failed: {node[1][-1500:]}"
 
+        backend = workspace / "backend.py"
+        if backend.exists():
+            code, output = self.executor.run_command(
+                ["python", "-m", "py_compile", "backend.py"],
+                workspace,
+                timeout=30,
+                cancel_check=cancel_check,
+            )
+            if code != 0:
+                return False, f"Generated backend syntax check failed: {output[-1500:]}"
+
         if self._is_timepro(workspace):
             ok, message = self._test_timepro(workspace)
             if not ok:
