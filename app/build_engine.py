@@ -34,6 +34,8 @@ class BuildEngine:
             return self.implement_feature("calculator", mission)
         if "implement history and lists" in normalized:
             return self.implement_feature("list", mission)
+        if "validate backend and persistence contract" in normalized:
+            return self.implement_backend(mission)
         if "implement requested functionality" in normalized:
             return self.implement(mission)
         if "repair after test failure" in normalized:
@@ -85,6 +87,66 @@ class BuildEngine:
         self._save_features(features)
         return f"Implemented generated app: {title} ({len(features)} features)"
 
+    def implement_backend(self, mission: str) -> str:
+        if not self.is_timepro(mission):
+            return "Backend contract validation skipped: mission has no persistent backend requirement"
+        self.project.write_file("backend.py", self._timepro_backend())
+        self.project.write_file("api_contract.json", self._timepro_api_contract())
+        return "TimePro backend persistence service generated"
+
+    @staticmethod
+    def _timepro_backend() -> str:
+        return """from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import sqlite3
+from urllib.parse import urlparse
+
+DB = "timepro.db"
+
+def init_db():
+    with sqlite3.connect(DB) as db:
+        db.execute("CREATE TABLE IF NOT EXISTS timesheets (id INTEGER PRIMARY KEY AUTOINCREMENT, employee TEXT NOT NULL, company TEXT NOT NULL DEFAULT '', work_date TEXT NOT NULL, location TEXT NOT NULL DEFAULT '', start_time TEXT NOT NULL, pause_minutes INTEGER NOT NULL DEFAULT 0, end_time TEXT NOT NULL, total_minutes INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+def minutes(value):
+    h, m = (int(x) for x in value.split(":", 1))
+    if not (0 <= h <= 23 and 0 <= m <= 59): raise ValueError("invalid time")
+    return h * 60 + m
+
+def total(start, end, pause):
+    value = minutes(end) - minutes(start) - int(pause)
+    if value <= 0: raise ValueError("end time must be after start time and pause")
+    return value
+
+def create(payload):
+    required = ("employee", "work_date", "start_time", "end_time")
+    if any(not str(payload.get(k, "")).strip() for k in required): raise ValueError("required field missing")
+    value = total(payload["start_time"], payload["end_time"], payload.get("pause_minutes", 0))
+    row = (str(payload["employee"]).strip(), str(payload.get("company", "")).strip(), str(payload["work_date"]).strip(), str(payload.get("location", "")).strip(), str(payload["start_time"]), int(payload.get("pause_minutes", 0)), str(payload["end_time"]), value, str(payload.get("note", "")).strip())
+    with sqlite3.connect(DB) as db:
+        cur = db.execute("INSERT INTO timesheets (employee, company, work_date, location, start_time, pause_minutes, end_time, total_minutes, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", row)
+        return {"id": cur.lastrowid, "total_minutes": value, "employee": row[0]}
+
+class Handler(BaseHTTPRequestHandler):
+    def send_json(self, status, payload):
+        raw = json.dumps(payload).encode()
+        self.send_response(status); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(raw))); self.end_headers(); self.wfile.write(raw)
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path == "/health": return self.send_json(200, {"ok": True})
+        if path == "/api/timepro/timesheets":
+            with sqlite3.connect(DB) as db:
+                db.row_factory = sqlite3.Row
+                return self.send_json(200, [dict(r) for r in db.execute("SELECT * FROM timesheets ORDER BY id DESC").fetchall()])
+        return self.send_json(404, {"error": "not found"})
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/timepro/timesheets": return self.send_json(404, {"error": "not found"})
+        try:
+            length = int(self.headers.get("Content-Length", "0")); payload = json.loads(self.rfile.read(length) or b"{}"); return self.send_json(201, create(payload))
+        except (ValueError, TypeError, json.JSONDecodeError) as exc: return self.send_json(400, {"error": str(exc)})
+
+if __name__ == "__main__":
+    init_db(); ThreadingHTTPServer(("127.0.0.1", 8001), Handler).serve_forever()
+"""
     def implement_feature(self, feature: str, mission: str) -> str:
         files = self.project.list_files(".")
         if self.is_timepro(mission):
