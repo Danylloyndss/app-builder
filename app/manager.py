@@ -154,8 +154,9 @@ class Manager:
                     self.memory.record("acceptance_failed", task_id=task.id, repair_attempts=quality_attempts)
                     self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = "Acceptance checks passed" if quality_attempts == 0 else f"Acceptance checks passed after {quality_attempts} automatic repair(s)"
-            else: result = self.executor.execute(task.title, self.workspace, self.memory.mission)
-            self._check_cancelled()
+            else:
+                result = self.executor.execute(task.title, self.workspace, self.memory.mission)
+                self._check_cancelled()
             self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running"); self.memory.completed.append(result)
             if approved: self.approvals.consume(approved["id"]); self.memory.record("approval_consumed", request_id=approved["id"], task_id=task.id)
             if local_timesheet_access: self.memory.record("local_access_task", task_id=task.id, approval="not_required_external_action")
