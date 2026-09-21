@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from .approvals import ApprovalStore
 from .architecture import ArchitectureBuilder
 from .checkpoints import CheckpointStore
+from .diagnosis import FailureDiagnoser
 from .executor import Executor
 from .memory import ProjectMemory
 from .planner import Planner
@@ -37,6 +38,7 @@ class Manager:
         self.policy = ActionPolicy()
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
         self.checkpoints = CheckpointStore(self.workspace)
+        self.diagnoser = FailureDiagnoser()
         self.max_retries = max_retries
         self.progress_callback = progress_callback
 
@@ -130,7 +132,13 @@ class Manager:
                 ok, message = self.tester.test(self.workspace, cancel_check=lambda: self._cancel_requested()); attempts = 0
                 while not ok and attempts < self.max_retries:
                     self._check_cancelled()
-                    attempts += 1; self.memory.errors.append(f"Attempt {attempts}: {message}"); self.memory.record("repair", attempt=attempts, error=message); self.executor.execute("Repair after test failure", self.workspace, self.memory.mission); ok, message = self.tester.test(self.workspace, cancel_check=lambda: self._cancel_requested())
+                    attempts += 1
+                    diagnosis = self.diagnoser.diagnose(message)
+                    self.memory.errors.append(f"Attempt {attempts}: {message}")
+                    self.memory.diagnostics["last_failure_diagnosis"] = diagnosis
+                    self.memory.record("repair", attempt=attempts, error=message, diagnosis=diagnosis)
+                    self.executor.execute("Repair after test failure: " + diagnosis["action"], self.workspace, self.memory.mission)
+                    ok, message = self.tester.test(self.workspace, cancel_check=lambda: self._cancel_requested())
                 if not ok:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self._progress("failed"); self.memory.errors.append(message); self.memory.record("tests_failed", task_id=task.id, message=message); self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = message; self.memory.record("tests_passed", task_id=task.id, message=message)
@@ -144,9 +152,11 @@ class Manager:
                     quality_attempts += 1
                     report_path = self.workspace / ".app-builder" / "quality_report.json"
                     report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else "quality gate failed"
+                    diagnosis = self.diagnoser.diagnose(report_text)
                     self.memory.errors.append(f"Quality repair attempt {quality_attempts}: {report_text[-1500:]}")
-                    self.memory.record("quality_repair", attempt=quality_attempts, report=report_text[-1500:])
-                    self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
+                    self.memory.diagnostics["last_failure_diagnosis"] = diagnosis
+                    self.memory.record("quality_repair", attempt=quality_attempts, report=report_text[-1500:], diagnosis=diagnosis)
+                    self.executor.execute("Repair after test failure: " + diagnosis["action"], self.workspace, self.memory.mission)
                     quality_ok = self._run_quality_gate()
                 if not quality_ok:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"
@@ -257,10 +267,12 @@ class Manager:
             report_path = self.workspace / ".app-builder" / "quality_report.json"
             report_text = report_path.read_text(encoding="utf-8") if report_path.exists() else "quality gate failed"
             self.memory.errors.append(f"Final quality repair attempt {final_attempts}: {report_text[-1500:]}")
-            self.memory.record("final_quality_repair", attempt=final_attempts, report=report_text[-1500:])
+            diagnosis = self.diagnoser.diagnose(report_text)
+            self.memory.diagnostics["last_failure_diagnosis"] = diagnosis
+            self.memory.record("final_quality_repair", attempt=final_attempts, report=report_text[-1500:], diagnosis=diagnosis)
             self.memory.current_task = "Final quality repair"
             self._progress("running")
-            self.executor.execute("Repair after test failure", self.workspace, self.memory.mission)
+            self.executor.execute("Repair after test failure: " + diagnosis["action"], self.workspace, self.memory.mission)
             quality_ok = self._run_quality_gate()
         self.memory.current_task=""
         if quality_ok:
