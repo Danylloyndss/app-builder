@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import py_compile
 from pathlib import Path
 
 from app.build_engine import BuildEngine
@@ -60,6 +61,10 @@ class BuildEngineTests(unittest.TestCase):
             self.assertIn("date", schema["fields"])
             self.assertEqual(manifest["schema"], ".app-builder/backend_schema.json")
             self.assertEqual(contract["resources"]["records"]["fields"], schema["fields"])
+            py_compile.compile(str(Path(temp_dir) / "backend.py"), doraise=True)
+            backend = (Path(temp_dir) / "backend.py").read_text(encoding="utf-8")
+            self.assertIn("SCHEMA", backend)
+            self.assertIn("ApplicationRecord", backend)
 
 
 if __name__ == "__main__":
