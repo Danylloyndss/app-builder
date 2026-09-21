@@ -93,6 +93,7 @@ class BuildEngine:
         self.project.write_file("backend.py", self._timepro_backend())
         self.project.write_file("tests/test_backend_integration.py", self._timepro_integration_test())
         self.project.write_file("api_contract.json", self._timepro_api_contract())
+        self.project.write_file(".app-builder/backend.json", json.dumps({"runtime":"python","entrypoint":"backend.py","database":"sqlite","api_base":"/api/timepro","health":"/health"}, indent=2) + "\n")
         return "TimePro backend persistence service generated"
 
     @staticmethod
