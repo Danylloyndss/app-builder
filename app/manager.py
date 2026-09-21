@@ -2,6 +2,8 @@
 
 from pathlib import Path
 import json
+import hashlib
+from datetime import datetime, timezone
 
 from .approvals import ApprovalStore
 from .architecture import ArchitectureBuilder
@@ -199,6 +201,27 @@ class Manager:
             quality_ok = self._run_quality_gate()
         self.memory.current_task=""
         self.memory.status="completed" if quality_ok and not self.memory.errors else "completed_with_errors"
-        self.memory.record("mission_finished", status=self.memory.status, final_quality_repairs=final_attempts)
+        artifact_root = self.workspace / ".app-builder"
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        artifacts = {}
+        for path in sorted(self.workspace.rglob("*")):
+            if not path.is_file() or ".git" in path.parts or ".app-builder" in path.parts:
+                continue
+            artifacts[str(path.relative_to(self.workspace))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        build_report = {
+            "mission": self.memory.mission,
+            "status": self.memory.status,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "quality_passed": quality_ok,
+            "final_quality_repairs": final_attempts,
+            "completed_tasks": list(self.memory.completed),
+            "errors": list(self.memory.errors),
+            "artifacts": artifacts,
+        }
+        (artifact_root / "build_report.json").write_text(json.dumps(build_report, indent=2, ensure_ascii=False), encoding="utf-8")
+        self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
+        self.memory.diagnostics["artifact_count"] = len(artifacts)
+        self.memory.diagnostics["quality_passed"] = quality_ok
+        self.memory.record("mission_finished", status=self.memory.status, final_quality_repairs=final_attempts, artifact_count=len(artifacts))
         self.memory.save(self.memory_path)
         return self.memory
