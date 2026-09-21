@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import re
 
+from .project_validator import ProjectValidator
+
 
 @dataclass
 class QualityReport:
@@ -27,6 +29,12 @@ class QualityGate:
     def evaluate(self, workspace: Path, acceptance_criteria: list[str] | None = None) -> QualityReport:
         errors: list[str] = []
         structural: list[str] = []
+        validator = ProjectValidator()
+        valid, contract_errors = validator.validate(workspace)
+        if valid:
+            structural.append("Generated project contract passed")
+        else:
+            errors.extend(contract_errors)
         security: list[str] = []
         acceptance: list[str] = []
 
