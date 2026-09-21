@@ -423,6 +423,15 @@ if __name__ == "__main__":
                 spec = json.loads(spec_path.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError):
                 spec = {}
+        if not spec.get("data_entities"):
+            from .specification import SpecificationBuilder
+            built = SpecificationBuilder().build(mission)
+            spec = {
+                "data_entities": list(built.data_entities),
+                "entity_fields": dict(built.entity_fields),
+                "business_rules": list(built.business_rules),
+                "integrations": list(built.integrations),
+            }
         entities = [str(x) for x in spec.get("data_entities", []) if str(x).strip()]
         entity = entities[0] if entities else "ApplicationRecord"
         fields = ["id"]
