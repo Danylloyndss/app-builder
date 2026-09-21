@@ -68,9 +68,9 @@ def _run_pending_jobs():
                         current_now["error_count"]=len(memory.errors)
                         current_now["diagnostics"]=dict(memory.diagnostics)
                         if state=="waiting_for_approval":
-                            pending=APPROVALS.list_pending()
-                            match=next((a for a in pending if a.get("action")==memory.current_task),None)
-                            if match: current_now["approval_id"]=match.get("id")
+                            approval_id = memory.diagnostics.get("approval_id")
+                            if approval_id:
+                                current_now["approval_id"] = approval_id
                         _save_jobs(jobs_now)
                         _job_event(current_now,"progress",f"{state}: {memory.current_task}" if memory.current_task else str(state))
                 memory=Manager(workspace=WORKSPACE, progress_callback=progress).run(job["mission"],resume=bool(job.get("resume")))
