@@ -96,6 +96,23 @@ class TimeProService:
             except OSError: pass
         return deleted
 
+    def get_timesheet(self, timesheet_id: int) -> dict | None:
+        try:
+            record_id = int(timesheet_id)
+        except (TypeError, ValueError):
+            raise TimeProValidationError("timesheet id must be an integer")
+        row = self.db.fetch_one("SELECT * FROM timesheets WHERE id=?", (record_id,))
+        if not row:
+            return None
+        row["attachments"] = self.db.fetch_all(
+            "SELECT id,filename,mime_type,created_at FROM timesheet_attachments WHERE timesheet_id=? ORDER BY id DESC",
+            (record_id,),
+        )
+        row["has_signature"] = bool(
+            self.db.fetch_one("SELECT timesheet_id FROM timesheet_signatures WHERE timesheet_id=?", (record_id,))
+        )
+        return row
+
     def history(self, employee: str | None = None, company: str | None = None, date_from: str | None = None, date_to: str | None = None) -> list[dict]:
         clauses, params = [], []
         if employee: clauses.append("employee LIKE ?"); params.append(f"%{employee}%")
