@@ -72,6 +72,20 @@ class Tester:
 
         backend = workspace / "backend.py"
         if backend.exists():
+            manifest = workspace / ".app-builder" / "backend.json"
+            if not manifest.exists():
+                return False, "Generated backend manifest is missing"
+            try:
+                backend_manifest = json.loads(manifest.read_text(encoding="utf-8"))
+                for key in ("runtime", "entrypoint", "api_base", "health"):
+                    if not backend_manifest.get(key):
+                        return False, f"Generated backend manifest missing {key}"
+                entrypoint = workspace / str(backend_manifest["entrypoint"])
+                if not entrypoint.exists():
+                    return False, "Generated backend entrypoint is missing"
+            except (OSError, ValueError):
+                return False, "Generated backend manifest is invalid JSON"
+
             code, output = self.executor.run_command(
                 ["python", "-m", "py_compile", "backend.py"],
                 workspace,
