@@ -251,19 +251,27 @@ if __name__ == "__main__":
     @staticmethod
     def _generic_backend_test(schema: dict | None = None) -> str:
         schema = schema or {"entity": "ApplicationRecord", "entities": ["ApplicationRecord"], "entity_fields": {"ApplicationRecord": ["id", "date", "location", "note"]}}
-    entity = str(schema.get("entity") or "ApplicationRecord")
-    resource = re.sub(r"(?<!^)(?=[A-Z])", "_", entity).lower().replace("_", "-")
-    fields = [str(x) for x in (schema.get("entity_fields") or {}).get(entity, schema.get("fields", ["id"])) if str(x) != "id"]
-    sample = {}
-    for field in fields:
-        if field == "email": sample[field] = "test@example.com"
-        elif field.endswith("_id"): sample[field] = 1
-        elif "amount" in field or field in {"price", "total", "hours"}: sample[field] = 1
-        elif "date" in field: sample[field] = "2026-01-02"
-        else: sample[field] = "Test"
-    sample_json = json.dumps(sample, ensure_ascii=False)
-    update_json = json.dumps({**sample, next(iter(fields), "note"): "Updated"}, ensure_ascii=False)
-    return f'''import json
+        entity = str(schema.get("entity") or "ApplicationRecord")
+        resource = re.sub(r"(?<!^)(?=[A-Z])", "_", entity).lower().replace("_", "-")
+        fields = [str(x) for x in (schema.get("entity_fields") or {}).get(entity, schema.get("fields", ["id"])) if str(x) != "id"]
+        sample = {}
+        for field in fields:
+            if field == "email":
+                sample[field] = "test@example.com"
+            elif field.endswith("_id"):
+                sample[field] = 1
+            elif "amount" in field or field in {"price", "total", "hours"}:
+                sample[field] = 1
+            elif "date" in field:
+                sample[field] = "2026-01-02"
+            else:
+                sample[field] = "Test"
+        sample_json = json.dumps(sample, ensure_ascii=False)
+        update_data = dict(sample)
+        if fields:
+            update_data[fields[0]] = "Updated" if fields[0] not in {"date", "amount", "price", "total", "hours"} else ("2026-01-03" if fields[0] == "date" else 2)
+        update_json = json.dumps(update_data, ensure_ascii=False)
+        return r'''import json
 import os
 import socket
 import subprocess
@@ -301,25 +309,27 @@ with tempfile.TemporaryDirectory() as tmp:
                 time.sleep(0.05)
         else:
             raise AssertionError("backend did not become healthy")
-        created = call(base + "/api/records", "POST", {"date": "2026-01-02", "location": "Test", "note": "ok"})
+        created = call(base + "/api/__RESOURCE__", "POST", __SAMPLE__)
         assert created["id"] > 0
-        rows = call(base + "/api/records")
-        assert rows and rows[0]["location"] == "Test"
+        rows = call(base + "/api/__RESOURCE__")
+        assert rows and rows[0]["id"] == created["id"]
         record_id = created["id"]
-        updated = call(base + "/api/records?id=" + str(record_id), "PUT", {"id": record_id, "date": "2026-01-03", "location": "Updated", "note": "changed"})
-        assert updated["location"] == "Updated"
+        updated = call(base + "/api/__RESOURCE__?id=" + str(record_id), "PUT", dict(__UPDATE__))
+        assert updated["id"] == record_id
         try:
-            call(base + "/api/records", "POST", {"unexpected": True})
+            call(base + "/api/__RESOURCE__", "POST", {"unexpected": True})
             raise AssertionError("unknown field accepted")
         except HTTPError as exc:
             assert exc.code == 400
-        deleted = call(base + "/api/records?id=" + str(record_id), "DELETE")
+        deleted = call(base + "/api/__RESOURCE__?id=" + str(record_id), "DELETE")
         assert deleted["deleted"] is True
-        assert call(base + "/api/records") == []
+        assert call(base + "/api/__RESOURCE__") == []
+        compatibility = call(base + "/api/records")
+        assert compatibility == []
     finally:
         process.terminate()
         process.wait(timeout=3)
-'''
+'''.replace("__RESOURCE__", resource).replace("__SAMPLE__", sample_json).replace("__UPDATE__", update_json)
 
     @staticmethod
     def _timepro_backend() -> str:
