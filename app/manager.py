@@ -199,6 +199,8 @@ class Manager:
                     final_test_ok, final_test_message = self._validate_generated_project(self.workspace)
                 if not final_test_ok:
                     self.memory.errors.append("Final runtime verification failed after automatic repair: " + final_test_message)
+                    self.memory.diagnostics["final_runtime_verification_passed"] = False
+                    self.memory.diagnostics["final_runtime_repairs"] = runtime_attempts
                     self.memory.record("final_runtime_verification_failed", task_id=task.id, message=final_test_message, repair_attempts=runtime_attempts)
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"
                     self._save_tasks(tasks); self.memory.save(self.memory_path)
