@@ -11,7 +11,7 @@ class ReleaseManagerTests(unittest.TestCase):
     def _base(self, root):
         (root / "index.html").write_text("<html></html>", encoding="utf-8")
         (root / "app.js").write_text("console.log('ok')", encoding="utf-8")
-        (root / "README.md").write_text("# App", encoding="utf-8")
+        (root / "README.md").write_text("# Generated App\n\nA complete generated application.", encoding="utf-8")
 
     def test_release_requires_readme(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -44,7 +44,7 @@ class ReleaseManagerTests(unittest.TestCase):
             root = Path(temp_dir)
             bundle = root / "release.zip"
             with zipfile.ZipFile(bundle, "w") as archive:
-                archive.writestr("release_report.json", json.dumps({"artifacts": {"app.js": "bad"}}))
+                archive.writestr("release_report.json", json.dumps({"artifacts": {"app.js": "0" * 64}}))
                 archive.writestr("app.js", "console.log('tampered')")
             result = ReleaseManager().verify_bundle(bundle)
             self.assertFalse(result["ok"])
