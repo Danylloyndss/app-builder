@@ -134,4 +134,16 @@ class QualityGate:
                 else:
                     acceptance.append(criterion)
 
+        # Generic feature behavior must exist in executable UI code, not only metadata.
+        if "timepro" not in mission:
+            script = (workspace / "app.js").read_text(encoding="utf-8") if (workspace / "app.js").exists() else ""
+            if "forms" in spec_features and "data-save" not in ((workspace / "index.html").read_text(encoding="utf-8") if (workspace / "index.html").exists() else ""):
+                errors.append("Generic forms feature has no save form")
+            if "storage" in spec_features and "fetch" not in script and "localStorage" not in script:
+                errors.append("Generic storage feature has no persistence client")
+            if "dashboard" in spec_features and "metric-records" not in ((workspace / "index.html").read_text(encoding="utf-8") if (workspace / "index.html").exists() else ""):
+                errors.append("Generic dashboard has no metric output")
+            if "list" in spec_features and "history-list" not in ((workspace / "index.html").read_text(encoding="utf-8") if (workspace / "index.html").exists() else ""):
+                errors.append("Generic list feature has no history output")
+
         return QualityReport(not errors, structural, security, acceptance, errors)
