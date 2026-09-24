@@ -36,6 +36,7 @@ class Manager:
         self.quality = QualityGate()
         self.release = ReleaseManager()
         self.executor = Executor()
+        self._release_production = False
         self.tester = Tester()
         self.policy = ActionPolicy()
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
