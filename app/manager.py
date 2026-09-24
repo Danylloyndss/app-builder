@@ -410,6 +410,8 @@ class Manager:
             "status": self.memory.status,
             "mission": self.memory.mission,
             "quality_passed": quality_ok,
+            "final_runtime_verification_passed": bool(self.memory.diagnostics.get("final_runtime_verification_passed", False)),
+            "final_runtime_repairs": int(self.memory.diagnostics.get("final_runtime_repairs", 0)),
             "artifact_count": len(artifacts),
             "release_ready": bool(release_report.ready and quality_ok),
             "release_blockers": list(release_report.blockers),
