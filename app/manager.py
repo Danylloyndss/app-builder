@@ -37,6 +37,12 @@ class Manager:
         self.release = ReleaseManager()
         self.executor = Executor()
         self._release_production = False
+
+    def configure_production_release(self, enabled: bool = True) -> None:
+        """Enable production-readiness enforcement for the current mission."""
+        self._release_production = bool(enabled)
+        self.memory.diagnostics["production_release_requested"] = self._release_production
+        self.memory.save(self.memory_path)
         self.tester = Tester()
         self.policy = ActionPolicy()
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
@@ -355,6 +361,8 @@ class Manager:
         release_report = self.release.prepare(self.workspace, quality_ok)
         release_report.save(artifact_root / "release_report.json")
         self.memory.diagnostics["release_ready"] = release_report.ready
+        self.memory.diagnostics["release_blockers"] = list(release_report.blockers)
+        self.memory.diagnostics["release_artifacts"] = len(release_report.artifacts)
         self.memory.diagnostics["release_report"] = ".app-builder/release_report.json"
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
