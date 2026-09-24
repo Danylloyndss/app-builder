@@ -395,6 +395,19 @@ class Manager:
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
         self.memory.diagnostics["quality_passed"] = quality_ok
+        completion = {
+            "status": self.memory.status,
+            "mission": self.memory.mission,
+            "quality_passed": quality_ok,
+            "artifact_count": len(artifacts),
+            "release_ready": bool(release_report.ready and quality_ok),
+            "release_blockers": list(release_report.blockers),
+            "final_quality_repairs": final_attempts,
+            "completed_tasks": list(self.memory.completed),
+            "errors": list(self.memory.errors),
+        }
+        (artifact_root / "completion_report.json").write_text(json.dumps(completion, indent=2, ensure_ascii=False), encoding="utf-8")
+        self.memory.diagnostics["completion_report"] = ".app-builder/completion_report.json"
         self.memory.record("mission_finished", status=self.memory.status, final_quality_repairs=final_attempts, artifact_count=len(artifacts))
         self.memory.save(self.memory_path)
         return self.memory
