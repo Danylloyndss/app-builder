@@ -79,5 +79,15 @@ class DeliveryCoordinator:
             self.controller.fail(release_hash, health.error or "deployment health check failed")
         return health
 
+    def reconcile(self, provider: str, release_hash: str, deployment_id: str, health_url: str | None = None) -> dict:
+        result = self.controller.check_deployment(provider, release_hash, deployment_id)
+        payload = result.to_dict()
+        if result.status == "published" and health_url:
+            health = self.confirm_health(release_hash, health_url)
+            payload["health"] = health.to_dict()
+            if not health.ok:
+                payload["status"] = "failed"
+        return payload
+
     def bundle_hash(self, bundle: str | Path) -> str:
         return bundle_fingerprint(bundle)
