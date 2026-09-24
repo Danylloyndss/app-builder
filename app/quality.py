@@ -108,6 +108,30 @@ class QualityGate:
                 else:
                     errors.append(f"TimePro acceptance failed: {label}")
         else:
-            acceptance.extend(acceptance_criteria or ["Generated project has required artifacts"])
+            requested = acceptance_criteria or ["Generated project has required artifacts"]
+            artifact_map = {
+                "form": "form-schema.json",
+                "dashboard": "dashboard.json",
+                "mobile": "mobile.json",
+                "calculator": "calculator.json",
+                "history": "list.json",
+            }
+            spec_features = []
+            try:
+                spec_data = json.loads((workspace / ".app-builder" / "spec.json").read_text(encoding="utf-8"))
+                spec_features = [str(x).lower() for x in spec_data.get("features", [])]
+            except (OSError, ValueError, TypeError):
+                pass
+            for criterion in requested:
+                matched = next((feature for feature, artifact in artifact_map.items()
+                                 if feature in criterion.lower() and feature in spec_features), None)
+                if matched:
+                    artifact = workspace / artifact_map[matched]
+                    if artifact.exists() and artifact.read_text(encoding="utf-8").strip():
+                        acceptance.append(criterion)
+                    else:
+                        errors.append(f"Feature artifact missing: {artifact_map[matched]}")
+                else:
+                    acceptance.append(criterion)
 
         return QualityReport(not errors, structural, security, acceptance, errors)
