@@ -1017,7 +1017,7 @@ L’authentification de production, les signatures et les pièces jointes resten
                 "    if (!list) return;",
                 "    list.innerHTML = '';",
                 "    const rows = Array.isArray(records) ? records : [];",
-                "    rows.forEach(record => { const item = document.createElement('li'); item.textContent = JSON.stringify(record); list.appendChild(item); });",
+                "    rows.forEach(record => { const item = document.createElement('li'); const entries = Object.entries(record || {}).filter(([key]) => key !== 'id'); item.textContent = entries.map(([key, value]) => key + ': ' + String(value)).join(' · ') || 'Empty record'; list.appendChild(item); });",
                 "    const count = document.querySelector('#metric-records'); if (count) count.textContent = rows.length;",
                 "    const hours = document.querySelector('#metric-hours'); if (hours) hours.textContent = rows.reduce((sum, r) => sum + Number(r.hours || 0), 0);",
                 "    const pending = document.querySelector('#metric-pending'); if (pending) pending.textContent = rows.filter(r => String(r.status || '').toLowerCase() === 'pending').length;",
