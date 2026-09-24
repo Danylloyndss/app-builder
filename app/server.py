@@ -6,6 +6,8 @@ from urllib.parse import parse_qs, urlparse
 from .approvals import ApprovalStore
 from .manager import JobCancelled, Manager
 from .timepro_api import TimeProService, TimeProValidationError
+from .deployment import DeploymentAdapter
+from .release_state import ReleaseState
 WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; TIMEPRO_SW=ROOT/"static"/"timepro-sw.js"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
 
 def _job_store_path():
@@ -20,9 +22,9 @@ def _load_jobs():
 def _save_jobs(jobs):
     p=_job_store_path(); tmp=p.with_suffix(".tmp"); tmp.write_text(json.dumps(jobs,indent=2,ensure_ascii=False),encoding="utf-8"); tmp.replace(p)
 
-def _enqueue_job(mission,resume=False):
+def _enqueue_job(mission,resume=False,production=False):
     from datetime import datetime,timezone
-    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":"","completed_count":0,"error_count":0,"cancel_requested":False,"events":[],"last_heartbeat_at":None,"diagnostics":{}}; jobs.append(job); _save_jobs(jobs); return job
+    jobs=_load_jobs(); job={"id":os.urandom(8).hex(),"mission":mission,"resume":resume,"production":bool(production),"status":"pending","created_at":datetime.now(timezone.utc).isoformat(),"started_at":None,"finished_at":None,"error":"","attempts":0,"current_task":"","completed_count":0,"error_count":0,"cancel_requested":False,"events":[],"last_heartbeat_at":None,"diagnostics":{}}; jobs.append(job); _save_jobs(jobs); return job
 
 def _job_event(job, event, detail=""):
     jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job.get("id")),None)
@@ -79,7 +81,10 @@ def _run_pending_jobs():
                                 current_now["approval_id"] = approval_id
                         _save_jobs(jobs_now)
                         _job_event(current_now,"progress",f"{state}: {memory.current_task}" if memory.current_task else str(state))
-                memory=Manager(workspace=WORKSPACE, progress_callback=progress).run(job["mission"],resume=bool(job.get("resume")))
+                manager=Manager(workspace=WORKSPACE, progress_callback=progress)
+                if bool(job.get("production")):
+                    manager.configure_production_release(True)
+                memory=manager.run(job["mission"],resume=bool(job.get("resume")))
                 jobs=_load_jobs(); current=next((j for j in jobs if j.get("id")==job["id"]),job); current["current_task"]=memory.current_task; current["status"]="waiting_for_approval" if memory.status=="waiting_for_approval" else ("completed" if memory.status != "cancelled" else "cancelled"); current["result_status"]=memory.status; current["diagnostics"]=dict(memory.diagnostics); current["finished_at"]=datetime.now(timezone.utc).isoformat(); _save_jobs(jobs)
                 _job_event(current,"finished",memory.status)
             except JobCancelled as exc:
@@ -107,18 +112,19 @@ def _recover_stale_job(job, now):
 
 def _start_job_worker(): threading.Thread(target=_run_pending_jobs,name="app-builder-job-worker",daemon=True).start()
 
-def _release_bundle(workspace=WORKSPACE):
+def _release_bundle(workspace=WORKSPACE, production=None):
     """Create and verify a deterministic zip bundle from a release workspace."""
     root=Path(workspace)
     from app.release import ReleaseManager
-    production = False
     state = root / "state.json"
-    if state.is_file():
+    if production is None:
+        production = False
+    if production is False and state.is_file():
         try:
             production = bool(json.loads(state.read_text(encoding="utf-8")).get("diagnostics", {}).get("production_release_requested", False))
         except (OSError, ValueError):
             production = False
-    report=ReleaseManager().prepare(root, True, production=production)
+    report=ReleaseManager().prepare(root, True, production=bool(production))
     if not report.ready:
         raise RuntimeError("; ".join(report.blockers))
     out=root/".app-builder"/"release_bundle.zip"
@@ -139,6 +145,8 @@ def _release_bundle(workspace=WORKSPACE):
             actual_hash=hashlib.sha256(bundle.read(relative)).hexdigest()
             if actual_hash != expected_hash:
                 raise RuntimeError(f"release bundle hash mismatch: {relative}")
+    DeploymentAdapter().save(root)
+    ReleaseState(root).set("ready", hashlib.sha256(out.read_bytes()).hexdigest())
     return out, report
 
 class Handler(BaseHTTPRequestHandler):
@@ -193,8 +201,8 @@ class Handler(BaseHTTPRequestHandler):
         body=path.read_bytes(); self.send_response(200); self.send_header("Content-Type",row["mime_type"]); self.send_header("Content-Disposition",f'inline; filename="{Path(row["filename"]).name}"'); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
     def _authorized(self):
         configured=os.environ.get("APP_BUILDER_API_KEY","").strip(); supplied=self.headers.get("X-App-Builder-Key",""); return not configured or (supplied and hmac.compare_digest(supplied,configured))
-    def _start_background(self, mission, resume=False):
-        job=_enqueue_job(mission,resume); _start_job_worker(); return job
+    def _start_background(self, mission, resume=False, production=False):
+        job=_enqueue_job(mission,resume,production); _start_job_worker(); return job
     def _status_payload(self,memory):
         from datetime import datetime,timezone
         jobs=_load_jobs()
@@ -303,13 +311,14 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(409,{"error":"job is not running or pending"}); return
                 _save_jobs(jobs); _job_event(job,"cancel_requested","User requested cancellation"); self._send(202,{"status":"cancellation_requested" if job.get("status")=="running" else "cancelled","job":job}); return
             if parsed.path=="/release/bundle":
-                out,report=_release_bundle()
+                production=bool(data.get("production", False))
+                out,report=_release_bundle(production=production)
                 self._send(201,{"ready":report.ready,"bundle":str(out),"artifacts":report.artifacts,"checks":report.checks})
                 return
             if parsed.path in ("/run/background","/resume/background"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
-                job=self._start_background(mission,resume=parsed.path=="/resume/background"); self._send(202,{"status":"queued","background":True,"job":job}); return
+                job=self._start_background(mission,resume=parsed.path=="/resume/background",production=bool(data.get("production",False))); self._send(202,{"status":"queued","background":True,"job":job}); return
             if parsed.path in ("/run","/resume"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
