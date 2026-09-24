@@ -71,15 +71,26 @@ class DeploymentRuntime:
             "stderr": result.stderr[-8000:],
         }
 
-    def publish(self, provider: str, release_hash: str | None) -> DeploymentResult:
-        """Return an explicit external-action requirement instead of faking deployment."""
+    def publish(self, provider: str, release_hash: str | None, workspace: str | Path = ".") -> DeploymentResult:
+        """Publish through a real provider adapter or require an external action."""
+        if provider.lower() == "railway":
+            from .railway_provider import RailwayProvider
+            result = RailwayProvider(workspace).publish()
+            return DeploymentResult(
+                status=result.status,
+                provider=provider,
+                release_hash=release_hash,
+                external_action_required=result.external_action_required,
+                health=None,
+                error=result.error,
+            )
         return DeploymentResult(
             status="external_action_required",
             provider=provider,
             release_hash=release_hash,
             external_action_required=True,
             health=None,
-            error="No authenticated provider publisher is configured",
+            error=f"No authenticated publisher is configured for provider: {provider}",
         )
 
     def save_result(self, workspace: str | Path, result: DeploymentResult) -> Path:
