@@ -108,7 +108,7 @@ def _recover_stale_job(job, now):
 def _start_job_worker(): threading.Thread(target=_run_pending_jobs,name="app-builder-job-worker",daemon=True).start()
 
 def _release_bundle(workspace=WORKSPACE):
-    """Create a deterministic zip bundle from a release workspace."""
+    """Create and verify a deterministic zip bundle from a release workspace."""
     root=Path(workspace)
     from app.release import ReleaseManager
     report=ReleaseManager().prepare(root, True)
@@ -116,15 +116,20 @@ def _release_bundle(workspace=WORKSPACE):
         raise RuntimeError("; ".join(report.blockers))
     out=root/".app-builder"/"release_bundle.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
+    manifest={"ready":report.ready,"checks":report.checks,"blockers":report.blockers,"artifacts":report.artifacts}
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as bundle:
         for relative in sorted(report.artifacts):
             bundle.write(root/relative, relative)
-        bundle.writestr("release_report.json", json.dumps({
-            "ready": report.ready,
-            "checks": report.checks,
-            "blockers": report.blockers,
-            "artifacts": report.artifacts,
-        }, indent=2, ensure_ascii=False))
+        bundle.writestr("release_report.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+    with zipfile.ZipFile(out, "r") as bundle:
+        names=set(bundle.namelist())
+        expected=set(report.artifacts) | {"release_report.json"}
+        if names != expected:
+            raise RuntimeError("release bundle contents failed integrity verification")
+        for relative, expected_hash in report.artifacts.items():
+            actual_hash=__import__("hashlib").sha256(bundle.read(relative)).hexdigest()
+            if actual_hash != expected_hash:
+                raise RuntimeError(f"release bundle hash mismatch: {relative}")
     return out, report
 
 class Handler(BaseHTTPRequestHandler):
@@ -236,6 +241,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
+        if self.path=="/release/bundle":
+            if not self._authorized(): self._send(401,{"error":"authentication required"}); return
+            out=Path(WORKSPACE)/".app-builder"/"release_bundle.zip"
+            if not out.is_file(): self._send(404,{"error":"release bundle has not been prepared"}); return
+            body=out.read_bytes(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=release_bundle.zip"); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
         parsed=urlparse(self.path)
         if parsed.path=="/api/timepro/export.csv": self._send_csv(); return
         if parsed.path=="/api/timepro/export.pdf": self._send_pdf(); return
@@ -283,6 +293,10 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._send(409,{"error":"job is not running or pending"}); return
                 _save_jobs(jobs); _job_event(job,"cancel_requested","User requested cancellation"); self._send(202,{"status":"cancellation_requested" if job.get("status")=="running" else "cancelled","job":job}); return
+            if parsed.path=="/release/bundle":
+                out,report=_release_bundle()
+                self._send(201,{"ready":report.ready,"bundle":str(out),"artifacts":report.artifacts,"checks":report.checks})
+                return
             if parsed.path in ("/run/background","/resume/background"):
                 mission=str(data.get("mission","")).strip()
                 if not mission or len(mission)>20000: self._send(400,{"error":"mission is required and must be <= 20000 characters"}); return
