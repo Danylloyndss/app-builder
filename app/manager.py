@@ -358,13 +358,36 @@ class Manager:
             self._progress("running")
             self.executor.execute("Repair after test failure: " + diagnosis["action"], self.workspace, self.memory.mission)
             quality_ok = self._run_quality_gate()
+        runtime_ok = self._validate_generated_project(self.workspace)
+        runtime_attempts = 0
+        while not runtime_ok[0] and runtime_attempts < self.max_retries:
+            self._check_cancelled()
+            runtime_attempts += 1
+            message = runtime_ok[1]
+            diagnosis = self.diagnoser.diagnose(message)
+            self.memory.errors.append(f"Final runtime repair attempt {runtime_attempts}: {message}")
+            self.memory.diagnostics["last_failure_diagnosis"] = diagnosis
+            self.memory.record("final_runtime_repair", attempt=runtime_attempts, error=message, diagnosis=diagnosis)
+            self.memory.current_task = "Final runtime repair"
+            self._progress("running")
+            self.executor.execute("Repair after final runtime verification failure: " + diagnosis["action"], self.workspace, self.memory.mission)
+            runtime_ok = self._validate_generated_project(self.workspace)
+        final_runtime_passed = bool(runtime_ok[0])
+        self.memory.diagnostics["final_runtime_verification_passed"] = final_runtime_passed
+        self.memory.diagnostics["final_runtime_repairs"] = runtime_attempts
+        if final_runtime_passed:
+            self.memory.record("final_runtime_verification_passed", task_id="final", message=runtime_ok[1], repair_attempts=runtime_attempts)
+        else:
+            self.memory.errors.append("Final runtime verification failed after automatic repair: " + runtime_ok[1])
+            self.memory.record("final_runtime_verification_failed", task_id="final", message=runtime_ok[1], repair_attempts=runtime_attempts)
         self.memory.current_task=""
-        if quality_ok:
+        release_quality_ok = quality_ok and final_runtime_passed
+        if release_quality_ok:
             self.memory.diagnostics["active_task_id"] = ""
             self.memory.diagnostics["active_task"] = ""
             self.memory.diagnostics["resume_eligible"] = False
             self.memory.errors = []
-        self.memory.status="completed" if quality_ok else "completed_with_errors"
+        self.memory.status="completed" if release_quality_ok else "completed_with_errors"
         artifact_root = self.workspace / ".app-builder"
         artifact_root.mkdir(parents=True, exist_ok=True)
         artifacts = {}
@@ -376,7 +399,7 @@ class Manager:
             "mission": self.memory.mission,
             "status": self.memory.status,
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "quality_passed": quality_ok,
+            "quality_passed": release_quality_ok,
             "final_quality_repairs": final_attempts,
             "completed_tasks": list(self.memory.completed),
             "errors": list(self.memory.errors),
@@ -389,7 +412,7 @@ class Manager:
         DeploymentAdapter().save(self.workspace)
         release_report = self.release.prepare(
             self.workspace,
-            quality_ok,
+            release_quality_ok,
             production=production,
             authentication_ready=authentication_ready,
             deployment_ready=deployment_ready,
@@ -413,11 +436,11 @@ class Manager:
         completion = {
             "status": self.memory.status,
             "mission": self.memory.mission,
-            "quality_passed": quality_ok,
+            "quality_passed": release_quality_ok,
             "final_runtime_verification_passed": bool(self.memory.diagnostics.get("final_runtime_verification_passed", False)),
             "final_runtime_repairs": int(self.memory.diagnostics.get("final_runtime_repairs", 0)),
             "artifact_count": len(artifacts),
-            "release_ready": bool(release_report.ready and quality_ok),
+            "release_ready": bool(release_report.ready and release_quality_ok),
             "release_blockers": list(release_report.blockers),
             "final_quality_repairs": final_attempts,
             "completed_tasks": list(self.memory.completed),
