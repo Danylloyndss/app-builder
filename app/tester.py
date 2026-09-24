@@ -132,13 +132,14 @@ class Tester:
                 workspace,
                 cancel_check=cancel_check,
             )
-            if code != 0:
+            no_tests = code == 0 and ("Ran 0 tests" in output or "NO TESTS RAN" in output)
+            if code != 0 or no_tests:
                 # Some generated integration checks are executable test scripts
-                # rather than unittest.TestCase classes. unittest reports those
-                # as "NO TESTS RAN" even though importing the module executes the
-                # integration assertions. Run those scripts directly as a safe
+                # rather than unittest.TestCase classes. unittest can report a
+                # zero-test discovery result even though the files contain
+                # executable assertions. Run those scripts directly as a safe
                 # fallback, while still failing ordinary test-suite errors.
-                if "NO TESTS RAN" in output:
+                if no_tests or "NO TESTS RAN" in output:
                     scripts = sorted(tests_dir.glob("test*.py"))
                     if scripts:
                         for script in scripts:
