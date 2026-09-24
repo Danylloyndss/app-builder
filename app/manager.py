@@ -14,6 +14,7 @@ from .memory import ProjectMemory
 from .planner import Planner
 from .policy import ActionPolicy
 from .quality import QualityGate
+from .release import ReleaseManager
 from .specification import SpecificationBuilder
 from .tasks import BuildTask, TaskBuilder
 from .tester import Tester
@@ -33,6 +34,7 @@ class Manager:
         self.architecture = ArchitectureBuilder()
         self.tasks = TaskBuilder()
         self.quality = QualityGate()
+        self.release = ReleaseManager()
         self.executor = Executor()
         self.tester = Tester()
         self.policy = ActionPolicy()
@@ -349,6 +351,10 @@ class Manager:
             "artifacts": artifacts,
         }
         (artifact_root / "build_report.json").write_text(json.dumps(build_report, indent=2, ensure_ascii=False), encoding="utf-8")
+        release_report = self.release.prepare(self.workspace, quality_ok)
+        release_report.save(artifact_root / "release_report.json")
+        self.memory.diagnostics["release_ready"] = release_report.ready
+        self.memory.diagnostics["release_report"] = ".app-builder/release_report.json"
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
         self.memory.diagnostics["quality_passed"] = quality_ok
