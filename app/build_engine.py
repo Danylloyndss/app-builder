@@ -123,7 +123,7 @@ class BuildEngine:
         }
         self.project.write_file(".app-builder/capabilities.json", json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
         self._generate_integration_artifacts(self._infer_integrations_from_mission(mission), mission)
-        if "forms" in features:
+        if "forms" in features or self._generic_form_schema(mission)["fields"] != [{"name": "name", "type": "text", "required": True}, {"name": "note", "type": "textarea", "required": False}]:
             self.project.write_file("form-schema.json", json.dumps(self._generic_form_schema(mission), indent=2, ensure_ascii=False) + "\n")
         if "dashboard" in features:
             self.project.write_file("dashboard.json", json.dumps({"widgets": ["record_count", "recent_activity"], "refresh": "on_load"}, indent=2) + "\n")
