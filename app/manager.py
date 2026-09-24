@@ -93,6 +93,9 @@ class Manager:
     def _save_tasks(self, tasks: list[BuildTask]) -> None:
         self.tasks.save(tasks, self.workspace / ".app-builder" / "tasks.json")
 
+    def _validate_generated_project(self, workspace):
+        return self.tester.test(workspace, cancel_check=lambda: self._cancel_requested())
+
     def _run_quality_gate(self) -> bool:
         spec = self.specification.build(self.memory.mission)
         report = self.quality.evaluate(self.workspace, spec.acceptance_criteria)
@@ -174,7 +177,7 @@ class Manager:
                     self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 result = "Acceptance checks passed" if quality_attempts == 0 else f"Acceptance checks passed after {quality_attempts} automatic repair(s)"
             else:
-                result = self.executor.execute(task.title, self.workspace, self.memory.mission)
+                result = self.executor.execute(task.title, self.workspace, self.memory.mission, self._validate_generated_project)
                 self._check_cancelled()
             self.memory.task_statuses[task.id] = "completed"; task.status = "completed"; self._progress("running")
             self.memory.diagnostics["last_completed_task_id"] = task.id
