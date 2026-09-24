@@ -49,7 +49,7 @@ class ReleaseManager:
         else:
             checks.append("README documentation present")
             try:
-                if len(readme.read_text(encoding="utf-8")) < 20:
+                if len(readme.read_text(encoding="utf-8").strip()) < 20:
                     blockers.append("README.md is too short")
             except OSError:
                 blockers.append("README.md cannot be read")
