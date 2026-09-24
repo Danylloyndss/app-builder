@@ -48,6 +48,11 @@ class ReleaseManager:
             blockers.append("README.md is missing or empty")
         else:
             checks.append("README documentation present")
+            try:
+                if len(readme.read_text(encoding="utf-8")) < 20:
+                    blockers.append("README.md is too short")
+            except OSError:
+                blockers.append("README.md cannot be read")
         mobile_manifest = root / "manifest.webmanifest"
         if mobile_manifest.is_file():
             try:
