@@ -130,7 +130,13 @@ class BuildEngine:
         if "mobile" in features:
             self.project.write_file("mobile.json", json.dumps({"responsive": True, "viewport": "width=device-width, initial-scale=1", "touch_target_min_px": 44}, indent=2) + "\n")
         if "calculator" in features:
-            self.project.write_file("calculator.json", json.dumps({"operations": ["add", "subtract", "multiply", "divide"], "divide_by_zero": "reject"}, indent=2) + "\n")
+            self.project.write_file("calculator.json", json.dumps({
+                "operations": ["add", "subtract", "multiply", "divide"],
+                "divide_by_zero": "reject",
+                "runtime": "client-side",
+                "inputs": ["a", "b"],
+                "output": "result",
+            }, indent=2) + "\n")
         if "list" in features:
             self.project.write_file("list.json", json.dumps({"sort": "newest_first", "empty_state": True}, indent=2) + "\n")
 
