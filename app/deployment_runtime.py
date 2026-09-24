@@ -93,6 +93,13 @@ class DeploymentRuntime:
             error=f"No authenticated publisher is configured for provider: {provider}",
         )
 
+    def deployment_status(self, provider: str, deployment_id: str, workspace: str | Path = ".") -> DeploymentResult:
+        if provider.lower() == "railway":
+            from .railway_provider import RailwayProvider
+            result = RailwayProvider(workspace).status(deployment_id)
+            return DeploymentResult(result.status, provider, None, result.external_action_required, None, result.error)
+        return DeploymentResult("external_action_required", provider, None, True, None, f"No status adapter for provider: {provider}")
+
     def save_result(self, workspace: str | Path, result: DeploymentResult) -> Path:
         path = Path(workspace) / ".app-builder" / "deployment_result.json"
         path.parent.mkdir(parents=True, exist_ok=True)
