@@ -48,7 +48,7 @@ class DeploymentRuntime:
         try:
             with urllib.request.urlopen(url, timeout=timeout) as response:
                 code = int(response.status)
-                return HealthResult(code < 500, url, code, int((time.monotonic() - started) * 1000))
+                return HealthResult(200 <= code < 300, url, code, int((time.monotonic() - started) * 1000), None if 200 <= code < 300 else f"unexpected HTTP status: {code}")
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             return HealthResult(False, url, None, int((time.monotonic() - started) * 1000), str(exc))
 
