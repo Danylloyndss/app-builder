@@ -1091,7 +1091,7 @@ L’authentification de production, les signatures et les pièces jointes resten
         if "auth" in features:
             sections.append('<form data-login><h2>Sign in</h2><input name="email" type="email" placeholder="Email" required><input name="password" type="password" placeholder="Password" required><button>Sign in</button></form>')
         if "forms" in features:
-            schema = self._generic_form_schema(mission)
+            schema = BuildEngine._generic_form_schema(mission)
             fields_html = []
             for field in schema["fields"]:
                 name = escape(str(field["name"]))
