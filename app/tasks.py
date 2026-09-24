@@ -54,6 +54,12 @@ class TaskBuilder:
                     [f"{title} is represented in the generated project"]))
                 previous = task_id
 
+        if spec.integrations:
+            tasks.append(BuildTask("integrations", "Implement safe integration adapters", "integration", "high",
+                                   [previous], True,
+                                   ["External integrations are isolated behind approval-gated adapters"]))
+            previous = "integrations"
+
         tasks.append(BuildTask("implement", "Implement requested functionality", "build", [previous], "medium"))
         if "data storage" in features or "storage" in features:
             tasks.append(BuildTask("backend", "Generate backend and persistence layer", "storage", ["implement"], "medium", False, ["Persistence boundary is explicitly defined"]))
