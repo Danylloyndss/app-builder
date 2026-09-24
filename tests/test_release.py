@@ -35,6 +35,15 @@ class ReleaseManagerTests(unittest.TestCase):
 
 
 
+
+    def test_release_records_artifact_inventory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._base(root)
+            report = ReleaseManager().prepare(root, True)
+            self.assertTrue(report.ready)
+            self.assertTrue(any("release artifact inventory contains" in item for item in report.checks))
+
     def test_release_rejects_empty_artifact_set(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
