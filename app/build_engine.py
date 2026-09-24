@@ -846,7 +846,7 @@ if __name__ == "__main__":
   </section>
   <section><h2>Tableau de bord</h2><div id="dashboard" class="cards"></div></section>
   <section><h2>Historique</h2><div id="history"></div></section>
-  <p data-builder-status>TimePro MVP — données enregistrées localement dans ce prototype.</p>
+  <p data-builder-status>TimePro MVP — stockage serveur avec secours local si le serveur est indisponible.</p>
 </main><script src="app.js"></script></body>
 </html>
 '''
@@ -882,8 +882,9 @@ MVP généré automatiquement par App Builder V1.
 - Note et photo optionnelles
 - Stockage local du navigateur pour le prototype
 
-## Limitation volontaire du MVP
-Les données sont stockées dans `localStorage`. L’authentification, une vraie base de données, les signatures et l’envoi vers un serveur nécessitent une étape backend et, si nécessaire, l’approbation humaine correspondante.
+## Architecture de production
+Le prototype peut utiliser `localStorage` hors serveur, mais lorsqu’un backend TimePro est généré, les feuilles sont persistées dans SQLite via l’API `/api/timepro`.
+L’authentification de production, les signatures et les pièces jointes restent des intégrations séparées et doivent être activées avec l’approbation correspondante.
 '''
 
     @staticmethod
