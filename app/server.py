@@ -326,6 +326,21 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._send(409,{"error":"job is not running or pending"}); return
                 _save_jobs(jobs); _job_event(job,"cancel_requested","User requested cancellation"); self._send(202,{"status":"cancellation_requested" if job.get("status")=="running" else "cancelled","job":job}); return
+            if parsed.path=="/release/verify":
+                bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
+                self._send(200,DeliveryCoordinator(WORKSPACE).verify_bundle(bundle)); return
+            if parsed.path=="/release/request-approval":
+                bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
+                result=DeliveryCoordinator(WORKSPACE).prepare(bundle, require_approval=True)
+                self._send(200 if result.get("ready") else 409,result); return
+            if parsed.path=="/release/approve":
+                release_hash=str(data.get("release_hash","")).strip()
+                state=ReleaseState(WORKSPACE).read()
+                if not release_hash: self._send(400,{"error":"release_hash is required"}); return
+                if state.get("release_hash")!=release_hash: self._send(409,{"error":"release hash does not match selected release"}); return
+                if state.get("state")!="awaiting_approval": self._send(409,{"error":"release is not awaiting approval"}); return
+                from .release_controller import ReleaseController
+                self._send(200,ReleaseController(WORKSPACE).approve(release_hash)); return
             if parsed.path=="/release/prepare":
                 bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
                 result=DeliveryCoordinator(WORKSPACE).prepare(bundle, require_approval=bool(data.get("require_approval",True)))
