@@ -55,6 +55,9 @@ class ArchitectureBuilder:
             components.append("authentication boundary")
         if persistent_data:
             components.extend(["backend service", "persistence adapter", "persistence layer"])
+        if spec.integrations:
+            components.append("integration gateway")
+            constraints.append("External integrations must remain behind explicit adapters and approval gates")
 
         return Architecture(
             app_type=spec.app_type,
