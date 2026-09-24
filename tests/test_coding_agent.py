@@ -52,6 +52,23 @@ class CodingAgentTests(unittest.TestCase):
             self.assertTrue(result.success)
             self.assertEqual((Path(temp_dir) / "generated.py").read_text(), "print('ok')\n")
 
+    def test_run_command_allowlist_blocks_arbitrary_execution(self):
+        with self.assertRaises(ValueError):
+            CodingAgent._validate_command(["python", "-c", "print('bad')"])
+        with self.assertRaises(ValueError):
+            CodingAgent._validate_command(["node", "-e", "console.log('bad')"])
+        with self.assertRaises(ValueError):
+            CodingAgent._validate_command(["npm", "install", "package"])
+
+    def test_run_command_allowlist_accepts_validation_commands(self):
+        for command in (
+            ["python", "-m", "py_compile", "backend.py"],
+            ["python", "-m", "unittest", "discover"],
+            ["node", "--check", "app.js"],
+            ["npm", "test"],
+        ):
+            CodingAgent._validate_command(command)
+
     def test_model_cannot_escape_workspace(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             agent = CodingAgent(temp_dir)
