@@ -70,7 +70,7 @@ class ReleaseManagerTests(unittest.TestCase):
     def test_release_rejects_empty_artifact_set(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "README.md").write_text("# App", encoding="utf-8")
+            (root / "README.md").write_text("# Generated App\n\nA complete generated application.", encoding="utf-8")
             (root / "index.html").write_text("<html></html>", encoding="utf-8")
             (root / "app.js").write_text("console.log('ok')", encoding="utf-8")
             report = ReleaseManager().prepare(root, True)
