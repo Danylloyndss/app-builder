@@ -64,6 +64,8 @@ class ReleaseManager:
                     checks.append("mobile install manifest validated")
             except (OSError, ValueError):
                 blockers.append("mobile install manifest is invalid JSON")
+        if not mobile_manifest.is_file():
+            checks.append("mobile install manifest not present; desktop release remains supported")
         deployment_manifest = root / ".app-builder" / "deployment.json"
         if production and not deployment_manifest.is_file():
             blockers.append("deployment readiness manifest is missing")
