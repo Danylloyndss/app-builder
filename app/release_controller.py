@@ -68,11 +68,10 @@ class ReleaseController:
         return result
 
     def recover_deployment(self, provider: str, release_hash: str) -> DeploymentResult | None:
-        items = self.attempts._load()
-        candidates = [x for x in items if x.get("provider") == provider and x.get("release_hash") == release_hash and x.get("deployment_id")]
-        if not candidates:
+        active = self.attempts.find_active(provider, release_hash)
+        if not active or not active.get("deployment_id"):
             return None
-        latest = candidates[-1]
+        latest = active
         if latest.get("status") not in {"queued", "running", "waiting_external_action"}:
             return None
         return self.check_deployment(provider, release_hash, str(latest["deployment_id"]))
