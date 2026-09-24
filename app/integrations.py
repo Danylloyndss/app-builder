@@ -49,12 +49,14 @@ class IntegrationRegistry:
     def get(self, name: str) -> IntegrationConfig | None:
         return self._configs.get(name)
 
-    def ready(self, name: str) -> tuple[bool, str]:
+    def ready(self, name: str, approved: bool = False) -> tuple[bool, str]:
         config = self.get(name)
         if config is None:
             return False, "integration is not registered"
         if not config.enabled:
             return False, "integration is disabled"
+        if config.requires_approval and not approved:
+            return False, "human approval required"
         missing = [key for key in config.secret_names if not self.secret_provider.get(key)]
         if missing:
             return False, "missing runtime secret(s): " + ", ".join(missing)
