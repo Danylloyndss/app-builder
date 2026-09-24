@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from app.release import ReleaseManager
@@ -36,6 +37,18 @@ class ReleaseManagerTests(unittest.TestCase):
 
 
 
+
+
+    def test_verify_bundle_detects_hash_tampering(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            bundle = root / "release.zip"
+            with zipfile.ZipFile(bundle, "w") as archive:
+                archive.writestr("release_report.json", json.dumps({"artifacts": {"app.js": "bad"}}))
+                archive.writestr("app.js", "console.log('tampered')")
+            result = ReleaseManager().verify_bundle(bundle)
+            self.assertFalse(result["ok"])
+            self.assertIn("artifact hash mismatch", result["error"])
 
     def test_release_rejects_whitespace_only_readme(self):
         with tempfile.TemporaryDirectory() as temp_dir:
