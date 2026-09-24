@@ -82,7 +82,8 @@ class ReleaseVerifierTests(unittest.TestCase):
             def __enter__(self): return self
             def __exit__(self, *args): return False
         import unittest.mock as mock
-        with mock.patch("urllib.request.urlopen", return_value=Response()):
+        with mock.patch("socket.getaddrinfo", return_value=[(2, 1, 6, "", ("93.184.216.34", 80))]), \
+             mock.patch("urllib.request.urlopen", return_value=Response()):
             result = runtime.health_check("http://example.test")
         self.assertFalse(result.ok)
         self.assertEqual(result.status_code, 302)
