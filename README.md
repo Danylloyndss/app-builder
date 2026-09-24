@@ -20,13 +20,15 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 - Human-in-the-loop approval and resume flow.
 - Protected POST control-plane operations via optional `APP_BUILDER_API_KEY`.
 - Build concurrency protection so two missions cannot mutate the same workspace simultaneously.
-- Artifact inventory at `GET /artifacts` and downloadable build bundle at `GET /artifacts.zip`.
+- Artifact inventory and downloadable build bundle.
 - Railway healthcheck, restart policy, automated tests and pre-deploy tests.
 - Durable worker recovery diagnostics, resumable jobs and artifact-integrity verification before mission resume.
 - GitHub Actions CI runs Python compilation and the complete unittest suite on pushes and pull requests.
 - Dependency-free SQLite database adapter with transactional CRUD operations.
 - TimePro persistence schema with indexes for employee and work-date queries.
 - Architecture now selects a real persistence boundary for apps that require data storage.
+- **Bounded model-backed Coding Agent** with structured file edits, allowlisted commands, workspace-escape protection and secret-marker rejection.
+- **Executor integration**: unknown implementation tasks can now be delegated to the Coding Agent while deterministic Build Engine handlers remain the default.
 
 ## TimePro definition of done
 
@@ -38,27 +40,13 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 6. Core flow is responsive on a mobile viewport.
 7. Optional fields never block submission.
 
-The repository contains automated tests for the TimePro specification, generated MVP, quality gate, complete Manager end-to-end flow, and the new database adapter/persistence schema.
-
-## Control plane
-
-- `GET /health` — health check.
-- `GET /status` — mission and task state.
-- `GET /approvals` — pending human approvals.
-- `GET /artifacts` — generated workspace files.
-- `GET /artifacts.zip` — downloadable generated workspace bundle.
-- `POST /run` — start a mission.
-- `POST /resume` — resume a paused mission.
-- `POST /approval` — create an approval request.
-- `POST /approval/decision` — record a human decision.
-
 ## Architecture
 
 - **Manager** — orchestration/state machine.
 - **Specification Builder** — product specification.
 - **Architecture Builder** — technical architecture.
 - **Task Builder** — executable dependency graph.
-- **Executor / Build Engine** — implementation.
+- **Executor / Build Engine / Coding Agent** — deterministic implementation plus bounded model-backed coding.
 - **Tester** — automated verification.
 - **Quality Gate** — security and acceptance verification.
 - **Database Adapter** — transactional persistence boundary; SQLite is the default implementation.
@@ -75,5 +63,3 @@ The repository contains automated tests for the TimePro specification, generated
 - Production release automation after human approval.
 
 The design goal remains: continue autonomously until a genuine external action requires the human, then resume from durable state.
-
-Build validation marker: 2026-09-17 persistence-layer deployment verification.
