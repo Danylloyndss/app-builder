@@ -6,6 +6,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import hashlib
 import json
+import zipfile
 
 
 @dataclass(frozen=True)
@@ -78,3 +79,34 @@ class ReleaseManager:
         if production:
             checks.extend(["production Dockerfile present", "production deployment manifest present", "production readiness checks passed"])
         return ReleaseReport(True, checks, [], artifacts)
+
+    def verify_bundle(self, bundle: str | Path, report: ReleaseReport | None = None) -> dict:
+        """Verify ZIP safety and every artifact hash before delivery."""
+        path = Path(bundle)
+        if not path.is_file():
+            return {"ok": False, "error": "release bundle is missing"}
+        try:
+            with zipfile.ZipFile(path) as archive:
+                names = archive.namelist()
+                if len(names) != len(set(names)):
+                    return {"ok": False, "error": "release bundle contains duplicate entries"}
+                for name in names:
+                    candidate = Path(name)
+                    if candidate.is_absolute() or ".." in candidate.parts:
+                        return {"ok": False, "error": "release bundle contains unsafe path"}
+                if "release_report.json" not in names:
+                    return {"ok": False, "error": "release report is missing"}
+                release_report = json.loads(archive.read("release_report.json"))
+                artifacts = release_report.get("artifacts", {})
+                if not isinstance(artifacts, dict):
+                    return {"ok": False, "error": "release report artifacts are invalid"}
+                expected = set(artifacts) | {"release_report.json"}
+                if set(names) != expected:
+                    return {"ok": False, "error": "release bundle contents do not match release report"}
+                for name, digest in artifacts.items():
+                    actual = hashlib.sha256(archive.read(name)).hexdigest()
+                    if actual != digest:
+                        return {"ok": False, "error": f"artifact hash mismatch: {name}"}
+                return {"ok": True, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "artifact_count": len(artifacts)}
+        except (OSError, ValueError, zipfile.BadZipFile, KeyError) as exc:
+            return {"ok": False, "error": str(exc)}
