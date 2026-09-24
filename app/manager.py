@@ -379,7 +379,10 @@ class Manager:
         self.memory.diagnostics["release_bundle_ready"] = bool(release_report.ready and quality_ok)
         self.memory.diagnostics["release_report"] = ".app-builder/release_report.json"
         release_state = ReleaseState(self.workspace)
-        release_state.set("ready" if release_report.ready else "not_ready")
+        if release_report.ready:
+            release_state.mark_ready(hashlib.sha256(json.dumps(release_report.artifacts, sort_keys=True).encode()).hexdigest(), reason="verified build artifacts ready")
+        else:
+            release_state.set("not_ready")
         self.memory.diagnostics["release_state"] = release_state.read()["state"]
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
