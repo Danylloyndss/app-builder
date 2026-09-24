@@ -422,7 +422,7 @@ class Manager:
         self.memory.diagnostics["release_blockers"] = list(release_report.blockers)
         self.memory.diagnostics["release_artifacts"] = len(release_report.artifacts)
         self.memory.diagnostics["release_production"] = production
-        self.memory.diagnostics["release_bundle_ready"] = bool(release_report.ready and quality_ok)
+        self.memory.diagnostics["release_bundle_ready"] = bool(release_report.ready and release_quality_ok)
         self.memory.diagnostics["release_report"] = ".app-builder/release_report.json"
         release_state = ReleaseState(self.workspace)
         if release_report.ready:
@@ -432,7 +432,7 @@ class Manager:
         self.memory.diagnostics["release_state"] = release_state.read()["state"]
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
-        self.memory.diagnostics["quality_passed"] = quality_ok
+        self.memory.diagnostics["quality_passed"] = release_quality_ok
         completion = {
             "status": self.memory.status,
             "mission": self.memory.mission,
