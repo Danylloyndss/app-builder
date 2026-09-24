@@ -55,11 +55,11 @@ class IntegrationRegistry:
             return False, "integration is not registered"
         if not config.enabled:
             return False, "integration is disabled"
-        if config.requires_approval and not approved:
-            return False, "human approval required"
         missing = [key for key in config.secret_names if not self.secret_provider.get(key)]
         if missing:
             return False, "missing runtime secret(s): " + ", ".join(missing)
+        if config.requires_approval and not approved:
+            return False, "human approval required"
         return True, "integration is configured"
 
     def all_ready(self, approved: bool = False) -> tuple[bool, dict[str, str]]:
