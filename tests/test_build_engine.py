@@ -80,6 +80,12 @@ class BuildEngineTests(unittest.TestCase):
             html = (Path(temp_dir) / "index.html").read_text(encoding="utf-8")
             self.assertNotIn("<script>alert('x')</script>", html)
 
+    def test_generic_spec_infers_integrations(self) -> None:
+        spec = SpecificationBuilder().build("Create a customer booking app with calendar, email notifications and payments")
+        self.assertIn("calendar", spec.integrations)
+        self.assertIn("email", spec.integrations)
+        self.assertIn("payments", spec.integrations)
+
     def test_generic_spec_infers_domain_entities(self) -> None:
         spec = SpecificationBuilder().build("Create an expense tracker for clients with data storage")
         self.assertIn("Expense", spec.data_entities)
