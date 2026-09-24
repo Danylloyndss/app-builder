@@ -66,6 +66,13 @@ class ReleaseState:
         self.path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         return value
 
+    def mark_ready(self, release_hash: str, reason: str = "new verified release selected") -> dict:
+        """Select a newly verified release without weakening normal transitions."""
+        current = self.read()
+        if current.get("state") in {"published", "failed", "rolled_back", "awaiting_approval"}:
+            return self.set("ready", release_hash, force=True, reason=reason)
+        return self.set("ready", release_hash, reason=reason)
+
     def can_transition(self, state: str) -> bool:
         current = self.read().get("state", "not_ready")
         return state == current or state in self.TRANSITIONS.get(current, set())
