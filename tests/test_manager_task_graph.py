@@ -10,7 +10,7 @@ class ManagerTaskGraphTests(unittest.TestCase):
         mission = "Create a mobile timesheet app with forms, data storage and manager dashboard"
         with tempfile.TemporaryDirectory() as temp_dir:
             memory = Manager(temp_dir).run(mission)
-            self.assertEqual(memory.status, "completed")
+            print("DEBUG_MANAGER_STATUS", memory.status, memory.errors, memory.task_statuses, memory.diagnostics)\n            self.assertEqual(memory.status, "completed")
             self.assertEqual(memory.task_statuses.get("spec"), "completed")
             self.assertEqual(memory.task_statuses.get("structure"), "completed")
             self.assertEqual(memory.task_statuses.get("forms"), "completed")
