@@ -124,6 +124,7 @@ def _release_bundle(workspace=WORKSPACE, production=None):
             production = bool(json.loads(state.read_text(encoding="utf-8")).get("diagnostics", {}).get("production_release_requested", False))
         except (OSError, ValueError):
             production = False
+    DeploymentAdapter().save(root)
     report=ReleaseManager().prepare(root, True, production=bool(production))
     if not report.ready:
         raise RuntimeError("; ".join(report.blockers))
@@ -145,7 +146,6 @@ def _release_bundle(workspace=WORKSPACE, production=None):
             actual_hash=hashlib.sha256(bundle.read(relative)).hexdigest()
             if actual_hash != expected_hash:
                 raise RuntimeError(f"release bundle hash mismatch: {relative}")
-    DeploymentAdapter().save(root)
     ReleaseState(root).set("ready", hashlib.sha256(out.read_bytes()).hexdigest())
     bundle_hash=hashlib.sha256(out.read_bytes()).hexdigest()
     manifest_path=root/".app-builder"/"bundle_manifest.json"
