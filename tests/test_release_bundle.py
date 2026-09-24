@@ -2,11 +2,23 @@ import tempfile
 import unittest
 from pathlib import Path
 from zipfile import ZipFile
+import hashlib
 
 from app.server import _release_bundle
 
 
 class ReleaseBundleTests(unittest.TestCase):
+    def test_release_bundle_is_byte_deterministic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'index.html').write_text('<html></html>', encoding='utf-8')
+            (root / 'app.js').write_text("console.log('ok')", encoding='utf-8')
+            first, _ = _release_bundle(root)
+            digest1 = hashlib.sha256(first.read_bytes()).hexdigest()
+            second, _ = _release_bundle(root)
+            digest2 = hashlib.sha256(second.read_bytes()).hexdigest()
+            self.assertEqual(digest1, digest2)
+
     def test_release_bundle_is_complete_and_hash_verified(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
