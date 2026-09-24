@@ -53,9 +53,21 @@ class DeliveryCoordinator:
         release_hash = verification["sha256"]
         current = self.controller.state.read()
         if current.get("release_hash") != release_hash:
-            self.controller.state.set("ready", release_hash, reason="verified release selected")
-        if self.controller.state.read().get("state") != "deploy_pending":
+            self.controller.state.mark_ready(release_hash, reason="verified release selected")
+            current = self.controller.state.read()
+        state = current.get("state")
+        if state == "awaiting_approval":
+            return DeploymentResult(
+                "approval_required", provider, release_hash, True, None,
+                "human approval is required before publishing"
+            )
+        if state == "ready":
             self.controller.approve(release_hash)
+        elif state != "deploy_pending":
+            return DeploymentResult(
+                "release_not_deployable", provider, release_hash, False, None,
+                f"release state does not permit publishing: {state}"
+            )
         return self.controller.publish(provider, release_hash)
 
     def confirm_health(self, release_hash: str, health_url: str, timeout: float = 5.0) -> HealthResult:
