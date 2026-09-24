@@ -1,0 +1,47 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from app.integrations import EnvironmentSecretProvider, IntegrationConfig, IntegrationRegistry
+from app.release import ReleaseManager
+from app.runtime import RuntimeSmokeTest
+from app.specialists import SpecialistRunner
+from app.coding_agent import AgentAction
+
+
+class ExpansionLayerTests(unittest.TestCase):
+    def test_integration_requires_runtime_secret(self):
+        registry = IntegrationRegistry(EnvironmentSecretProvider())
+        registry.register(IntegrationConfig("payments", enabled=True, secret_names=("PAYMENTS_KEY",)))
+        ok, message = registry.ready("payments")
+        self.assertFalse(ok)
+        self.assertIn("missing", message)
+
+    def test_release_report_hashes_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "index.html").write_text("<html></html>")
+            (root / "app.js").write_text("console.log('ok')")
+            report = ReleaseManager().prepare(root, True)
+            self.assertTrue(report.ready)
+            self.assertIn("index.html", report.artifacts)
+
+    def test_runtime_smoke_passes_backend_compile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "backend.py").write_text("print('ok')\n")
+            ok, _ = RuntimeSmokeTest().run(root)
+            self.assertTrue(ok)
+
+    def test_specialist_uses_same_bounded_agent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SpecialistRunner(tmp, max_iterations=1)
+            def planner(goal, files, observations):
+                return [AgentAction("write", "specialist.txt", "done")]
+            result = runner.run("qa", "fix test", planner, lambda _: (True, "passed"))
+            self.assertTrue(result.success)
+            self.assertTrue((Path(tmp) / "specialist.txt").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
