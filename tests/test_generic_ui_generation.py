@@ -27,7 +27,9 @@ class GenericUiGenerationTests(unittest.TestCase):
         engine.implement("Create a mobile client manager with forms and responsive support")
         manifest = json.loads((self.workspace / "manifest.webmanifest").read_text(encoding="utf-8"))
         self.assertEqual(manifest["display"], "standalone")
-        self.assertIn('"manifest": "manifest.webmanifest"', (self.workspace / ".app-builder" / "mobile.json").read_text(encoding="utf-8"))
+        mobile = json.loads((self.workspace / "mobile.json").read_text(encoding="utf-8"))
+        self.assertEqual(mobile["display_mode"], "standalone")
+        self.assertTrue(mobile["install_prompt_ready"])
 
     def test_history_is_readable(self):
         engine = BuildEngine(self.workspace)
