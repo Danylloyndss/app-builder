@@ -42,6 +42,18 @@ class BuildEngineTests(unittest.TestCase):
             self.assertIn("dashboard", features)
             self.assertIn("mobile", features)
 
+    def test_generic_feature_artifacts_are_generated(self) -> None:
+        mission = "Create a mobile expense tracker with form, dashboard, calculator and history"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = BuildEngine(Path(temp_dir))
+            engine.implement(mission)
+            root = Path(temp_dir)
+            for name in ("capabilities.json", "form-schema.json", "dashboard.json", "mobile.json", "calculator.json", "list.json"):
+                self.assertTrue((root / ".app-builder" / name).exists() if name == "capabilities.json" else (root / name).exists())
+            caps = json.loads((root / ".app-builder" / "capabilities.json").read_text())
+            self.assertEqual(caps["generated_by"], "App Builder V1")
+            self.assertIn("dashboard", caps["features"])
+
     def test_html_escapes_mission(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             engine = BuildEngine(Path(temp_dir))
