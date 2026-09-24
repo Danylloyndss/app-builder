@@ -22,6 +22,7 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 - Build concurrency protection so two missions cannot mutate the same workspace simultaneously.
 - Artifact inventory and downloadable build bundle.
 - Railway healthcheck, restart policy, automated tests and pre-deploy tests.
+- Production release gates verify deployment manifests and required runtime packaging before release.
 - Durable worker recovery diagnostics, resumable jobs and artifact-integrity verification before mission resume.
 - GitHub Actions CI runs Python compilation and the complete unittest suite on pushes and pull requests.
 - Dependency-free SQLite database adapter with transactional CRUD operations.
@@ -60,6 +61,7 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 - External integrations and secret-management adapters.
 - Browser/runtime integration tests.
 - Multi-agent specialist execution behind the same durable state machine.
+- Verified deterministic release bundles with integrity checks and protected download endpoint.
 - Production release automation after human approval.
 
 The design goal remains: continue autonomously until a genuine external action requires the human, then resume from durable state.
