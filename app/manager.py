@@ -193,7 +193,7 @@ class Manager:
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"
                     self._save_tasks(tasks); self.memory.save(self.memory_path)
                     return False
-                self.memory.record("final_runtime_verification_passed", task_id=task.id, message=final_test_message)
+                self.memory.record("final_runtime_verification_passed", task_id=task.id, message=final_test_message, repair_attempts=0)
                 result = "Acceptance and final runtime checks passed" if quality_attempts == 0 else f"Acceptance checks and final runtime verification passed after {quality_attempts} automatic repair(s)"
             else:
                 result = self.executor.execute(task.title, self.workspace, self.memory.mission, self._validate_generated_project)
