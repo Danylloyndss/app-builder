@@ -55,6 +55,18 @@ class ReleaseController:
         self.runtime.save_result(self.workspace, result)
         return result
 
+    def check_deployment(self, provider: str, release_hash: str | None, deployment_id: str) -> DeploymentResult:
+        result = self.runtime.deployment_status(provider, deployment_id, self.workspace)
+        if result.status == "published":
+            self.state.set("published", release_hash, reason="provider reports deployment successful")
+        elif result.status == "failed":
+            self.state.set("failed", release_hash, reason=result.error or "provider reports deployment failure")
+        else:
+            self.state.set("deploy_pending", release_hash, reason="provider deployment still in progress")
+        self.history.append("deployment_status", provider, release_hash, result.status)
+        self.runtime.save_result(self.workspace, result)
+        return result
+
     def fail(self, release_hash: str | None, reason: str) -> dict:
         value = self.state.set("failed", release_hash, reason=reason)
         self.history.append("failed", "control-plane", release_hash, reason)
