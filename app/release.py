@@ -46,6 +46,8 @@ class ReleaseManager:
         readme = root / "README.md"
         if not readme.is_file() or not readme.read_text(encoding="utf-8").strip():
             blockers.append("README.md is missing or empty")
+        else:
+            checks.append("README documentation present")
         mobile_manifest = root / "manifest.webmanifest"
         if mobile_manifest.is_file():
             try:
@@ -100,8 +102,6 @@ class ReleaseManager:
         if not artifacts:
             return ReleaseReport(False, checks, ["no release artifacts were generated"], {})
         checks.extend(["quality gate passed", "required web artifacts present", "artifact hashes generated"])
-        if (readme.is_file()):
-            checks.append("README documentation present")
         if production:
             checks.extend(["production Dockerfile present", "production deployment manifest present", "production readiness checks passed"])
         return ReleaseReport(True, checks, [], artifacts)
