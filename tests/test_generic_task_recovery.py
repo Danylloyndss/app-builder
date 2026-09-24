@@ -30,7 +30,7 @@ class GenericTaskRecoveryTests(unittest.TestCase):
             self.assertTrue(result)
             self.assertEqual(manager.memory.task_statuses["implement"], "completed")
             self.assertEqual(manager.memory.diagnostics["task_retry_counts"]["implement"], 1)
-            self.assertTrue(any(event.get("event") == "task_failure_diagnosed" for event in manager.memory.events))
+            self.assertTrue(any(event.get("event") == "task_failure_diagnosed" for event in manager.memory.history))
             self.assertGreaterEqual(calls.count(task.title), 2)
 
 
