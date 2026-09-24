@@ -88,6 +88,7 @@ class SpecificationBuilder:
         if "data storage" in features:
             entities.extend(self._infer_entities(text))
             entity_fields = self._infer_entity_fields(entities, lower)
+        integrations = self._infer_integrations(lower)
         business_rules = self._infer_business_rules(lower, features, entity_fields)
         security = ["Never expose secrets in generated source code", "Validate user-controlled input"]
         if "authentication" in features:
@@ -106,6 +107,18 @@ class SpecificationBuilder:
             users=users, screens=screens, features=features, data_entities=entities, entity_fields=entity_fields,
             business_rules=business_rules, security_requirements=security, acceptance_criteria=acceptance,
         )
+
+    @staticmethod
+    def _infer_integrations(lower: str) -> list[str]:
+        catalog = {
+            "email": ("email", "e-mail", "mail"),
+            "payments": ("payment", "payments", "pagamento", "stripe"),
+            "maps": ("map", "maps", "location", "gps", "endereço"),
+            "notifications": ("notification", "notifications", "notificação", "alert"),
+            "calendar": ("calendar", "calendário", "agenda"),
+            "messaging": ("whatsapp", "message", "messaging", "mensagem"),
+        }
+        return [name for name, keywords in catalog.items() if any(k in lower for k in keywords)]
 
     @staticmethod
     def _infer_entities(mission: str) -> list[str]:
