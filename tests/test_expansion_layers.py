@@ -30,13 +30,20 @@ class ExpansionLayerTests(unittest.TestCase):
             root = Path(tmp)
             (root / "index.html").write_text("<html></html>")
             (root / "app.js").write_text("console.log('ok')")
+            (root / "Dockerfile").write_text("FROM python:3.12-slim")
+            (root / "railway.toml").write_text("[deploy]\nstartCommand = \"python -m app.server\"")
             report = ReleaseManager().prepare(root, True)
             self.assertTrue(report.ready)
             self.assertIn("index.html", report.artifacts)
 
+            deployment_blocked = ReleaseManager().prepare(root, True, production=True)
+            self.assertTrue(deployment_blocked.ready)
+
+            (root / "railway.toml").unlink()
             blocked = ReleaseManager().prepare(root, True, production=True, authentication_ready=False)
             self.assertFalse(blocked.ready)
             self.assertIn("authentication", " ".join(blocked.blockers))
+            self.assertIn("deployment manifest", " ".join(blocked.blockers))
 
             ready = ReleaseManager().prepare(root, True, production=True)
             self.assertTrue(ready.ready)
