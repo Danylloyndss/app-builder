@@ -137,7 +137,8 @@ def _release_bundle(workspace=WORKSPACE, production=None):
             info=zipfile.ZipInfo(relative, date_time=(1980,1,1,0,0,0))
             info.compress_type=zipfile.ZIP_DEFLATED
             bundle.writestr(info, (root/relative).read_bytes())
-        bundle.writestr("release_report.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+        report_info=zipfile.ZipInfo("release_report.json", date_time=(1980,1,1,0,0,0)); report_info.compress_type=zipfile.ZIP_DEFLATED
+        bundle.writestr(report_info, json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
     with zipfile.ZipFile(out, "r") as bundle:
         names=set(bundle.namelist())
         expected=set(report.artifacts) | {"release_report.json"}
@@ -147,10 +148,14 @@ def _release_bundle(workspace=WORKSPACE, production=None):
             actual_hash=hashlib.sha256(bundle.read(relative)).hexdigest()
             if actual_hash != expected_hash:
                 raise RuntimeError(f"release bundle hash mismatch: {relative}")
-    ReleaseState(root).set("ready", hashlib.sha256(out.read_bytes()).hexdigest())
-    bundle_hash=hashlib.sha256(out.read_bytes()).hexdigest()
+    release_hash=hashlib.sha256(out.read_bytes()).hexdigest()
+    ReleaseState(root).mark_ready(release_hash)
+    bundle_hash=release_hash
     manifest_path=root/".app-builder"/"bundle_manifest.json"
     manifest_path.write_text(json.dumps({"format_version":1,"bundle_sha256":bundle_hash,"artifact_count":len(report.artifacts),"production":bool(production)},indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+    verified=ReleaseManager().verify_bundle(out, report)
+    if not verified.get("ok"):
+        raise RuntimeError(verified.get("error","release bundle verification failed"))
     return out, report
 
 class Handler(BaseHTTPRequestHandler):
