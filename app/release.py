@@ -23,12 +23,17 @@ class ReleaseReport:
 class ReleaseManager:
     """Prepare a deterministic release report; publishing remains approval-gated."""
 
-    def prepare(self, workspace: str | Path, quality_passed: bool) -> ReleaseReport:
+    def prepare(self, workspace: str | Path, quality_passed: bool, production: bool = False,
+                authentication_ready: bool = True, deployment_ready: bool = True) -> ReleaseReport:
         root = Path(workspace)
         blockers = []
         checks = []
         if not quality_passed:
             blockers.append("quality gate has not passed")
+        if production and not authentication_ready:
+            blockers.append("production authentication is not configured")
+        if production and not deployment_ready:
+            blockers.append("production deployment is not configured")
         if not (root / "index.html").is_file():
             blockers.append("index.html is missing")
         if not (root / "app.js").is_file():
@@ -42,4 +47,6 @@ class ReleaseManager:
                 continue
             artifacts[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
         checks.extend(["quality gate passed", "required web artifacts present", "artifact hashes generated"])
+        if production:
+            checks.append("production readiness checks passed")
         return ReleaseReport(True, checks, [], artifacts)
