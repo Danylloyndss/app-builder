@@ -125,6 +125,24 @@ class Tester:
             except (OSError, ValueError):
                 return False, "TimePro backend contract is invalid JSON"
 
+        # Generic capability artifacts must match the declared feature set.
+        feature_path = workspace / ".app-builder" / "features.json"
+        if feature_path.exists():
+            try:
+                features = {str(x).lower() for x in json.loads(feature_path.read_text(encoding="utf-8"))}
+                artifact_map = {"forms": "form-schema.json", "dashboard": "dashboard.json", "mobile": "mobile.json",
+                                "calculator": "calculator.json", "list": "list.json"}
+                missing = [name for feature, name in artifact_map.items() if feature in features and not (workspace / name).exists()]
+                if missing:
+                    return False, "Generic capability artifacts missing: " + ", ".join(missing)
+                integrations = workspace / ".app-builder" / "integrations.json"
+                if integrations.exists():
+                    data = json.loads(integrations.read_text(encoding="utf-8"))
+                    if any(config.get("approval_required") is not True for config in data.get("integrations", {}).values()):
+                        return False, "Integration safety boundary is not approval-gated"
+            except (OSError, ValueError, TypeError):
+                return False, "Generated capability metadata is invalid"
+        
         tests_dir = workspace / "tests"
         if tests_dir.exists():
             code, output = self.executor.run_command(
