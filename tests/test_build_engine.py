@@ -54,6 +54,25 @@ class BuildEngineTests(unittest.TestCase):
             self.assertEqual(caps["generated_by"], "App Builder V1")
             self.assertIn("dashboard", caps["features"])
 
+    def test_quality_gate_checks_generic_feature_artifacts(self) -> None:
+        from app.quality import QualityGate
+        mission = "Create a mobile expense tracker with form, dashboard, calculator and history"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            engine = BuildEngine(root)
+            engine.implement(mission)
+            (root / ".app-builder" / "spec.json").write_text(json.dumps({
+                "features": ["forms", "dashboard", "mobile", "calculation", "history"]
+            }))
+            report = QualityGate().evaluate(root, [
+                "Detected form feature is represented",
+                "Detected dashboard feature is represented",
+                "Detected mobile feature is represented",
+                "Detected calculator feature is represented",
+                "Detected history feature is represented",
+            ])
+            self.assertTrue(report.passed, report.errors)
+
     def test_html_escapes_mission(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             engine = BuildEngine(Path(temp_dir))
