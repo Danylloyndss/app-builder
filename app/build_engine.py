@@ -986,7 +986,8 @@ L’authentification de production, les signatures et les pièces jointes resten
                 "  };",
                 "  document.querySelectorAll('form[data-save]').forEach(form => form.addEventListener('submit', async event => {",
                 "    event.preventDefault();",
-                "    const payload = Object.fromEntries(new FormData(form));",
+                "    const raw = Object.fromEntries(new FormData(form));",
+                "    const payload = Object.fromEntries(Object.entries(raw).filter(([_, value]) => value !== ''));",
                 "    try { await api('/api/records', {method: 'POST', body: JSON.stringify(payload)}); await loadRecords(); if (status) status.textContent = 'Saved to server'; }",
                 "    catch (_) { const cached = JSON.parse(localStorage.getItem('app-builder-records') || '[]'); cached.push(payload); localStorage.setItem('app-builder-records', JSON.stringify(cached)); renderRecords(cached); if (status) status.textContent = 'Server unavailable — saved locally'; }",
                 "  }));",
@@ -1023,7 +1024,7 @@ L’authentification de production, les signatures et les pièces jointes resten
         if "list" in features:
             sections.append('<section><h2>History</h2><ul id="history-list"><li>No records yet</li></ul></section>')
         if "dashboard" in features:
-            sections.append('<section><h2>Dashboard</h2><div class="cards"><article>Employees</article><article>Hours</article><article>Pending</article></div></section>')
+            sections.append('<section><h2>Dashboard</h2><div class="cards"><article><b id="metric-records">0</b><span>Records</span></article><article><b id="metric-hours">0</b><span>Hours</span></article><article><b id="metric-pending">0</b><span>Pending</span></article></div></section>')
         sections.append('<p data-builder-status>Building...</p>')
         body = "\n    ".join(sections)
         return f'''<!doctype html>
