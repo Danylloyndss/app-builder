@@ -190,6 +190,29 @@ class Manager:
             self._save_tasks(tasks); self.memory.save(self.memory_path)
             raise
         except Exception as exc:
+            # Generic self-healing path: failures in any build task (not only the
+            # dedicated test/acceptance stages) get diagnosed, repaired, and retried.
+            # The retry budget is persisted so a resumed mission cannot loop forever.
+            retry_counts = self.memory.diagnostics.setdefault("task_retry_counts", {})
+            retries = int(retry_counts.get(task.id, 0))
+            if retries < self.max_retries and task.id not in {"repair", "security"}:
+                retries += 1
+                retry_counts[task.id] = retries
+                diagnosis = self.diagnoser.diagnose(str(exc))
+                self.memory.diagnostics["last_failure_diagnosis"] = diagnosis
+                self.memory.errors.append(f"Task {task.id} failed (attempt {retries}): {exc}")
+                self.memory.record("task_failure_diagnosed", task_id=task.id, attempt=retries, error=str(exc), diagnosis=diagnosis)
+                try:
+                    self._check_cancelled()
+                    self.executor.execute("Repair after test failure: " + diagnosis["action"], self.workspace, self.memory.mission)
+                    self.memory.record("task_repair_applied", task_id=task.id, attempt=retries, action=diagnosis["action"])
+                    self.memory.task_statuses[task.id] = "pending"; task.status = "pending"
+                    self._save_tasks(tasks); self.memory.save(self.memory_path)
+                    return self._execute_task(task, tasks)
+                except JobCancelled:
+                    raise
+                except Exception as repair_exc:
+                    self.memory.errors.append(f"Automatic repair for {task.id} failed: {repair_exc}")
             self.memory.task_statuses[task.id] = "failed"; task.status = "failed"; self.memory.errors.append(f"Task {task.id} failed: {exc}"); self.memory.record("task_failed", task_id=task.id, error=str(exc))
             checkpoint = self.checkpoints.latest()
             if checkpoint is not None and task.id in {"implement","test"}:
