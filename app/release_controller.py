@@ -27,6 +27,9 @@ class ReleaseController:
         return value
 
     def publish(self, provider: str, release_hash: str | None) -> DeploymentResult:
+        current = self.state.read()
+        if release_hash and current.get("release_hash") not in {None, release_hash}:
+            raise ValueError("release hash does not match selected release")
         result = self.runtime.publish(provider, release_hash)
         if result.external_action_required:
             self.state.set("deploy_pending", release_hash, reason="provider authentication/action required")
