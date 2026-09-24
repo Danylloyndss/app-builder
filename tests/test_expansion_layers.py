@@ -17,6 +17,14 @@ class ExpansionLayerTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("missing", message)
 
+        approved_registry = IntegrationRegistry(EnvironmentSecretProvider())
+        approved_registry.register(IntegrationConfig("analytics", enabled=True, requires_approval=True))
+        ok, message = approved_registry.ready("analytics")
+        self.assertFalse(ok)
+        self.assertIn("approval", message)
+        ok, _ = approved_registry.ready("analytics", approved=True)
+        self.assertTrue(ok)
+
     def test_release_report_hashes_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
