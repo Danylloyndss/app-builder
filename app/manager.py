@@ -372,6 +372,8 @@ class Manager:
         self.memory.diagnostics["release_ready"] = release_report.ready
         self.memory.diagnostics["release_blockers"] = list(release_report.blockers)
         self.memory.diagnostics["release_artifacts"] = len(release_report.artifacts)
+        self.memory.diagnostics["release_production"] = production
+        self.memory.diagnostics["release_bundle_ready"] = bool(release_report.ready and quality_ok)
         self.memory.diagnostics["release_report"] = ".app-builder/release_report.json"
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
