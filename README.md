@@ -63,5 +63,6 @@ TimePro is the first end-to-end application used to validate the builder: a mobi
 - Multi-agent specialist execution behind the same durable state machine.
 - Verified deterministic release bundles with integrity checks and protected download endpoint.
 - Production release automation after human approval.
+- Production release validates the generated backend runtime manifest before packaging.
 
 The design goal remains: continue autonomously until a genuine external action requires the human, then resume from durable state.
