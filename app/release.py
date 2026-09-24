@@ -42,6 +42,16 @@ class ReleaseManager:
             blockers.append("index.html is missing")
         if not (root / "app.js").is_file():
             blockers.append("app.js is missing")
+        deployment_manifest = root / ".app-builder" / "deployment.json"
+        if production and deployment_manifest.is_file():
+            try:
+                deployment = json.loads(deployment_manifest.read_text(encoding="utf-8"))
+                if not deployment.get("configured"):
+                    blockers.extend(str(x) for x in deployment.get("blockers", ["deployment adapter is not configured"]))
+                else:
+                    checks.append("deployment readiness manifest validated")
+            except (OSError, ValueError):
+                blockers.append("deployment manifest is invalid JSON")
         backend_manifest = root / ".app-builder" / "backend.json"
         if production and backend_manifest.is_file():
             try:
