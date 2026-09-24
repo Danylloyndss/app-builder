@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .deployment_history import DeploymentHistory
+from .deployment_attempts import DeploymentAttempts
 from .deployment_runtime import DeploymentRuntime, DeploymentResult
 from .release_state import ReleaseState
 
@@ -15,6 +16,7 @@ class ReleaseController:
         self.state = ReleaseState(self.workspace)
         self.history = DeploymentHistory(self.workspace)
         self.runtime = DeploymentRuntime()
+        self.attempts = DeploymentAttempts(self.workspace)
 
     def request_approval(self, release_hash: str | None) -> dict:
         value = self.state.set("awaiting_approval", release_hash, reason="release requires human approval")
@@ -30,11 +32,25 @@ class ReleaseController:
         current = self.state.read()
         if release_hash and current.get("release_hash") not in {None, release_hash}:
             raise ValueError("release hash does not match selected release")
-        result = self.runtime.publish(provider, release_hash)
+        attempt = self.attempts.begin(provider, release_hash or "")
+        if not attempt.get("allowed"):
+            result = DeploymentResult("deployment_blocked", provider, release_hash, False, None, attempt.get("reason"))
+            self.history.append(result.status, provider, release_hash, result.error or "")
+            self.runtime.save_result(self.workspace, result)
+            return result
+        result = self.runtime.publish(provider, release_hash, self.workspace)
         if result.external_action_required:
             self.state.set("deploy_pending", release_hash, reason="provider authentication/action required")
+            self.attempts.finish(attempt["attempt_id"], "waiting_external_action", error=result.error)
+        elif result.status in {"queued", "running"}:
+            self.state.set("deploy_pending", release_hash, reason="deployment queued")
+            self.attempts.finish(attempt["attempt_id"], result.status)
+        elif result.status == "failed":
+            self.state.set("failed", release_hash, reason=result.error or "deployment failed")
+            self.attempts.finish(attempt["attempt_id"], "failed", error=result.error)
         else:
             self.state.set("published", release_hash, reason="deployment completed")
+            self.attempts.finish(attempt["attempt_id"], "published")
         self.history.append(result.status, provider, release_hash, result.error or "")
         self.runtime.save_result(self.workspace, result)
         return result
