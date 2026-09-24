@@ -55,9 +55,8 @@ class TaskBuilder:
                 previous = task_id
 
         if spec.integrations:
-            tasks.append(BuildTask("integrations", "Implement safe integration adapters", "integration", "high",
-                                   [previous], True,
-                                   ["External integrations are isolated behind approval-gated adapters"]))
+            tasks.append(BuildTask("integrations", "Implement safe integration adapters", "integration", dependencies=[previous], risk="high", requires_approval=True,
+                                   acceptance=["External integrations are isolated behind approval-gated adapters"]))
             previous = "integrations"
 
         tasks.append(BuildTask("implement", "Implement requested functionality", "build", [previous], "medium"))
