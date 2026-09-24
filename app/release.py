@@ -103,6 +103,7 @@ class ReleaseManager:
             artifacts[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
         if not artifacts:
             return ReleaseReport(False, checks, ["no release artifacts were generated"], {})
+        checks.append(f"release artifact inventory contains {len(artifacts)} file(s)")
         checks.extend(["quality gate passed", "required web artifacts present", "artifact hashes generated"])
         if production:
             checks.extend(["production Dockerfile present", "production deployment manifest present", "production readiness checks passed"])
