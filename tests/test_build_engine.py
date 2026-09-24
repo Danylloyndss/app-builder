@@ -145,5 +145,24 @@ class BuildEngineTests(unittest.TestCase):
             self.assertTrue(any(item["name"] == "name" and item["required"] for item in contract["resources"]["client"]["field_definitions"]))
 
 
+    def test_generic_form_schema_is_mission_aware(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = BuildEngine(Path(temp_dir))
+            engine.implement("Create an expense tracker with client name, date and amount")
+            schema = json.loads((Path(temp_dir) / "form-schema.json").read_text(encoding="utf-8"))
+            names = {field["name"] for field in schema["fields"]}
+            self.assertTrue({"name", "date", "amount", "note"}.issubset(names))
+            self.assertEqual(next(f for f in schema["fields"] if f["name"] == "amount")["min"], 0)
+
+    def test_generic_dashboard_has_runtime_metrics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = BuildEngine(Path(temp_dir))
+            engine.implement("Create a notes app with forms, data storage, history and dashboard")
+            html = (Path(temp_dir) / "index.html").read_text(encoding="utf-8")
+            script = (Path(temp_dir) / "app.js").read_text(encoding="utf-8")
+            self.assertIn('id="metric-records"', html)
+            self.assertIn("rows.length", script)
+            self.assertIn("fetch", script)
+
 if __name__ == "__main__":
     unittest.main()
