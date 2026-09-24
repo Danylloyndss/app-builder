@@ -62,4 +62,14 @@ class ProjectValidator:
             except (OSError, ValueError, TypeError):
                 errors.append("integrations.json is invalid JSON")
 
+        adapters_dir = workspace / ".app-builder" / "integrations"
+        if adapters_dir.exists():
+            for adapter in adapters_dir.glob("*.json"):
+                try:
+                    data = json.loads(adapter.read_text(encoding="utf-8"))
+                    if data.get("external_call") is not False or data.get("approval_required") is not True:
+                        errors.append(f"Unsafe integration adapter: {adapter.name}")
+                except (OSError, ValueError, TypeError):
+                    errors.append(f"Invalid integration adapter: {adapter.name}")
+
         return not errors, errors
