@@ -40,6 +40,7 @@ class DeliveryCoordinator:
             self.controller.fail(verification.get("sha256"), verification.get("error", "bundle verification failed"))
             return {"ready": False, "verification": verification}
         release_hash = verification["sha256"]
+        self.controller.state.mark_ready(release_hash, reason="verified release selected")
         if require_approval:
             state = self.controller.request_approval(release_hash)
         else:
