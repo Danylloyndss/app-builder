@@ -81,6 +81,7 @@ class BuildEngine:
         features = self.detect_features(mission)
         self.project.write_file("index.html", self._html(title, mission, features))
         self.project.write_file("app.js", self._javascript(features))
+        self._generate_feature_artifacts(features, mission)
         self.project.write_file("README.md", self._readme(mission, features))
         self.project.write_file("hello_app.txt", f"{title}\n")
         if "storage" in features:
@@ -88,6 +89,33 @@ class BuildEngine:
         self.project.write_file(".app-builder/mission.txt", mission + "\n")
         self._save_features(features)
         return f"Implemented generated app: {title} ({len(features)} features)"
+
+    def _generate_feature_artifacts(self, features: list[str], mission: str) -> None:
+        meta = {
+            "generated_by": "App Builder V1",
+            "features": features,
+            "mission": mission,
+            "capabilities": {
+                "forms": "input validation and submission",
+                "dashboard": "summary metrics",
+                "mobile": "responsive viewport",
+                "calculator": "client-side calculations",
+                "list": "rendered records/history",
+                "auth": "approval-gated access boundary",
+                "storage": "SQLite persistence boundary",
+            },
+        }
+        self.project.write_file(".app-builder/capabilities.json", json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
+        if "forms" in features:
+            self.project.write_file("form-schema.json", json.dumps({"fields": [{"name": "name", "type": "text", "required": True}, {"name": "note", "type": "textarea", "required": False}]}, indent=2) + "\n")
+        if "dashboard" in features:
+            self.project.write_file("dashboard.json", json.dumps({"widgets": ["record_count", "recent_activity"], "refresh": "on_load"}, indent=2) + "\n")
+        if "mobile" in features:
+            self.project.write_file("mobile.json", json.dumps({"responsive": True, "viewport": "width=device-width, initial-scale=1", "touch_target_min_px": 44}, indent=2) + "\n")
+        if "calculator" in features:
+            self.project.write_file("calculator.json", json.dumps({"operations": ["add", "subtract", "multiply", "divide"], "divide_by_zero": "reject"}, indent=2) + "\n")
+        if "list" in features:
+            self.project.write_file("list.json", json.dumps({"sort": "newest_first", "empty_state": True}, indent=2) + "\n")
 
     def implement_backend(self, mission: str) -> str:
         if self.is_timepro(mission):
