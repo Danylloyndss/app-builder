@@ -187,14 +187,25 @@ class Manager:
                     self.memory.record("acceptance_failed", task_id=task.id, repair_attempts=quality_attempts)
                     self._save_tasks(tasks); self.memory.save(self.memory_path); return False
                 final_test_ok, final_test_message = self._validate_generated_project(self.workspace)
+                runtime_attempts = 0
+                while not final_test_ok and runtime_attempts < self.max_retries:
+                    self._check_cancelled()
+                    runtime_attempts += 1
+                    diagnosis = self.diagnoser.diagnose(final_test_message)
+                    self.memory.errors.append(f"Final runtime repair attempt {runtime_attempts}: {final_test_message}")
+                    self.memory.diagnostics["last_failure_diagnosis"] = diagnosis
+                    self.memory.record("final_runtime_repair", attempt=runtime_attempts, error=final_test_message, diagnosis=diagnosis)
+                    self.executor.execute("Repair after final runtime verification failure: " + diagnosis["action"], self.workspace, self.memory.mission)
+                    final_test_ok, final_test_message = self._validate_generated_project(self.workspace)
                 if not final_test_ok:
-                    self.memory.errors.append("Final runtime verification failed: " + final_test_message)
-                    self.memory.record("final_runtime_verification_failed", task_id=task.id, message=final_test_message)
+                    self.memory.errors.append("Final runtime verification failed after automatic repair: " + final_test_message)
+                    self.memory.record("final_runtime_verification_failed", task_id=task.id, message=final_test_message, repair_attempts=runtime_attempts)
                     self.memory.task_statuses[task.id] = "failed"; task.status = "failed"
                     self._save_tasks(tasks); self.memory.save(self.memory_path)
                     return False
-                self.memory.record("final_runtime_verification_passed", task_id=task.id, message=final_test_message, repair_attempts=0)
-                result = "Acceptance and final runtime checks passed" if quality_attempts == 0 else f"Acceptance checks and final runtime verification passed after {quality_attempts} automatic repair(s)"
+                self.memory.record("final_runtime_verification_passed", task_id=task.id, message=final_test_message, repair_attempts=runtime_attempts)
+                total_repairs = quality_attempts + runtime_attempts
+                result = "Acceptance and final runtime checks passed" if total_repairs == 0 else f"Acceptance checks and final runtime verification passed after {total_repairs} automatic repair(s)"
             else:
                 result = self.executor.execute(task.title, self.workspace, self.memory.mission, self._validate_generated_project)
                 self._check_cancelled()
