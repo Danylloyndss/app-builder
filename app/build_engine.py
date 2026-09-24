@@ -134,6 +134,8 @@ class BuildEngine:
                 "touch_target_min_px": 44,
                 "installable": True,
                 "manifest": "manifest.webmanifest",
+                "display_mode": "standalone",
+                "install_prompt_ready": True,
             }, indent=2) + "\n")
             self.project.write_file("manifest.webmanifest", json.dumps({
                 "name": self._title(mission),
