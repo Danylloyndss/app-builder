@@ -8,6 +8,7 @@ from .manager import JobCancelled, Manager
 from .timepro_api import TimeProService, TimeProValidationError
 from .deployment import DeploymentAdapter
 from .release_state import ReleaseState
+from .delivery import DeliveryCoordinator
 WORKSPACE="workspace"; ROOT=Path(__file__).resolve().parent; INDEX=ROOT/"static"/"index.html"; TIMEPRO_INDEX=ROOT/"static"/"timepro.html"; TIMEPRO_MANIFEST=ROOT/"static"/"timepro-manifest.json"; TIMEPRO_SW=ROOT/"static"/"timepro-sw.js"; APPROVALS=ApprovalStore(f"{WORKSPACE}/approvals.json"); RUN_LOCK=threading.Lock(); TIMEPRO=TimeProService()
 
 def _job_store_path():
@@ -261,6 +262,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
+        if self.path=="/release/history":
+            if not self._authorized(): self._send(401,{"error":"authentication required"}); return
+            from .deployment_history import DeploymentHistory
+            self._send(200,{"history":DeploymentHistory(WORKSPACE).list()}); return
         if self.path=="/release/state":
             if not self._authorized(): self._send(401,{"error":"authentication required"}); return
             self._send(200,ReleaseState(WORKSPACE).read()); return
@@ -316,6 +321,26 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     self._send(409,{"error":"job is not running or pending"}); return
                 _save_jobs(jobs); _job_event(job,"cancel_requested","User requested cancellation"); self._send(202,{"status":"cancellation_requested" if job.get("status")=="running" else "cancelled","job":job}); return
+            if parsed.path=="/release/prepare":
+                bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
+                result=DeliveryCoordinator(WORKSPACE).prepare(bundle, require_approval=bool(data.get("require_approval",True)))
+                self._send(200 if result.get("ready") else 409,result); return
+            if parsed.path=="/release/publish":
+                provider=str(data.get("provider","railway")).strip()
+                bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
+                result=DeliveryCoordinator(WORKSPACE).publish(provider,bundle)
+                self._send(202 if result.external_action_required else 200,result.to_dict()); return
+            if parsed.path=="/release/health":
+                release_hash=str(data.get("release_hash","")).strip()
+                health_url=str(data.get("url","")).strip()
+                if not release_hash or not health_url: self._send(400,{"error":"release_hash and url are required"}); return
+                result=DeliveryCoordinator(WORKSPACE).confirm_health(release_hash,health_url,float(data.get("timeout",5)))
+                self._send(200 if result.ok else 502,result.to_dict()); return
+            if parsed.path=="/release/rollback":
+                release_hash=str(data.get("release_hash","")).strip() or None
+                from .release_controller import ReleaseController
+                result=ReleaseController(WORKSPACE).rollback(release_hash,str(data.get("reason","rollback requested")))
+                self._send(200,result); return
             if parsed.path=="/release/bundle":
                 production=bool(data.get("production", False))
                 out,report=_release_bundle(production=production)
