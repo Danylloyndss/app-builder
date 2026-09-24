@@ -54,6 +54,8 @@ class ReleaseManager:
                     blockers.append("mobile install manifest is incomplete")
                 elif not mobile.get("name") or not mobile.get("short_name"):
                     blockers.append("mobile install manifest has no app name")
+                elif not isinstance(mobile.get("icons", []), list):
+                    blockers.append("mobile install manifest icons are invalid")
                 else:
                     checks.append("mobile install manifest validated")
             except (OSError, ValueError):
