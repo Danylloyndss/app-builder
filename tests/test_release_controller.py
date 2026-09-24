@@ -37,5 +37,17 @@ class ReleaseControllerTests(unittest.TestCase):
                 controller.publish("railway", "different")
 
 
+    def test_new_release_can_be_selected_after_publish(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = ReleaseState(tmp)
+            state.set("ready", "old")
+            state.set("awaiting_approval", "old")
+            state.set("deploy_pending", "old")
+            state.set("published", "old")
+            selected = state.mark_ready("new")
+            self.assertEqual(selected["state"], "ready")
+            self.assertEqual(selected["release_hash"], "new")
+
+
 if __name__ == "__main__":
     unittest.main()
