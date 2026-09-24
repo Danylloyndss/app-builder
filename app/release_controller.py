@@ -44,13 +44,13 @@ class ReleaseController:
             self.attempts.finish(attempt["attempt_id"], "waiting_external_action", error=result.error)
         elif result.status in {"queued", "running"}:
             self.state.set("deploy_pending", release_hash, reason="deployment queued")
-            self.attempts.finish(attempt["attempt_id"], result.status)
+            self.attempts.finish(attempt["attempt_id"], result.status, deployment_id=getattr(result, "deployment_id", None), url=getattr(result, "url", None))
         elif result.status == "failed":
             self.state.set("failed", release_hash, reason=result.error or "deployment failed")
             self.attempts.finish(attempt["attempt_id"], "failed", error=result.error)
         else:
             self.state.set("published", release_hash, reason="deployment completed")
-            self.attempts.finish(attempt["attempt_id"], "published")
+            self.attempts.finish(attempt["attempt_id"], "published", deployment_id=getattr(result, "deployment_id", None), url=getattr(result, "url", None))
         self.history.append(result.status, provider, release_hash, result.error or "")
         self.runtime.save_result(self.workspace, result)
         return result
@@ -66,6 +66,16 @@ class ReleaseController:
         self.history.append("deployment_status", provider, release_hash, result.status)
         self.runtime.save_result(self.workspace, result)
         return result
+
+    def recover_deployment(self, provider: str, release_hash: str) -> DeploymentResult | None:
+        items = self.attempts._load()
+        candidates = [x for x in items if x.get("provider") == provider and x.get("release_hash") == release_hash and x.get("deployment_id")]
+        if not candidates:
+            return None
+        latest = candidates[-1]
+        if latest.get("status") not in {"queued", "running", "waiting_external_action"}:
+            return None
+        return self.check_deployment(provider, release_hash, str(latest["deployment_id"]))
 
     def fail(self, release_hash: str | None, reason: str) -> dict:
         value = self.state.set("failed", release_hash, reason=reason)
