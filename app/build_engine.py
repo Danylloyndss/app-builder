@@ -996,6 +996,14 @@ L’authentification de production, les signatures et les pièces jointes resten
                 "  const calculateGeneric = () => { if (!calcA || !calcB || !calcResult) return; const a = Number(calcA.value); const b = Number(calcB.value); if (!Number.isFinite(a) || !Number.isFinite(b)) return; calcResult.textContent = String(a + b); };",
                 "  calcA?.addEventListener('input', calculateGeneric); calcB?.addEventListener('input', calculateGeneric);",
             ]
+        if "forms" in features:
+            blocks += [
+                "  document.querySelectorAll('form[data-save]').forEach(form => form.addEventListener('submit', event => {",
+                "    const invalid = [...form.querySelectorAll('[required]')].find(field => !String(field.value || '').trim());",
+                "    const negative = [...form.querySelectorAll('input[type=number]')].find(field => field.value !== '' && Number(field.value) < 0);",
+                "    if (invalid || negative) { event.preventDefault(); if (status) status.textContent = negative ? 'Values cannot be negative' : 'Please complete required fields'; }",
+                "  }, {capture: true}));",
+            ]
         if "storage" in features:
             blocks += [
                 "  const apiBase = window.APP_API_BASE || '';",
@@ -1068,7 +1076,19 @@ L’authentification de production, les signatures et les pièces jointes resten
         if "auth" in features:
             sections.append('<form data-login><h2>Sign in</h2><input name="email" type="email" placeholder="Email" required><input name="password" type="password" placeholder="Password" required><button>Sign in</button></form>')
         if "forms" in features:
-            sections.append('<form data-save><h2>New entry</h2><input name="date" type="date"><input name="location" placeholder="Location / site"><input id="start" name="start" type="time"><input name="break" type="number" min="0" placeholder="Break (minutes)"><input id="end" name="end" type="time"><textarea name="note" placeholder="Optional note"></textarea><button>Save</button></form>')
+            schema = self._generic_form_schema(mission)
+            fields_html = []
+            for field in schema["fields"]:
+                name = escape(str(field["name"]))
+                field_type = str(field.get("type", "text"))
+                required = " required" if field.get("required") else ""
+                minimum = f' min="{field["min"]}"' if field.get("min") is not None else ""
+                if field_type == "textarea":
+                    fields_html.append(f'<textarea name="{name}" placeholder="{name.title()}"{required}></textarea>')
+                else:
+                    input_type = field_type if field_type in {"text", "date", "email", "number", "time"} else "text"
+                    fields_html.append(f'<input name="{name}" type="{input_type}" placeholder="{name.title()}"{minimum}{required}>')
+            sections.append('<form data-save><h2>New entry</h2>' + "".join(fields_html) + '<button>Save</button></form>')
         if "calculator" in features:
             sections.append('<section><h2>Calculator</h2><input id="calc-a" type="number" inputmode="decimal" placeholder="First value"><input id="calc-b" type="number" inputmode="decimal" placeholder="Second value"><strong id="calc-result">0</strong><small id="total">Time total appears when time fields are present.</small></section>')
         if "list" in features:
