@@ -19,7 +19,7 @@ class ReleaseState:
     }
 
     TRANSITIONS = {
-        "not_ready": {"ready", "failed"},
+        "not_ready": {"ready", "awaiting_approval", "deploy_pending", "failed"},
         "ready": {"awaiting_approval", "deploy_pending", "failed"},
         "awaiting_approval": {"deploy_pending", "failed", "ready"},
         "deploy_pending": {"published", "failed", "rolled_back"},
