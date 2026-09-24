@@ -141,6 +141,9 @@ class ReleaseManager:
                 if set(names) != expected:
                     return {"ok": False, "error": "release bundle contents do not match release report"}
                 for name, digest in artifacts.items():
+                    if not isinstance(name, str) or not isinstance(digest, str) or len(digest) != 64:
+                        return {"ok": False, "error": f"invalid artifact digest: {name}"}
+                for name, digest in artifacts.items():
                     actual = hashlib.sha256(archive.read(name)).hexdigest()
                     if actual != digest:
                         return {"ok": False, "error": f"artifact hash mismatch: {name}"}
