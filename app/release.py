@@ -34,6 +34,10 @@ class ReleaseManager:
             blockers.append("production authentication is not configured")
         if production and not deployment_ready:
             blockers.append("production deployment is not configured")
+        if production and not (root / "Dockerfile").is_file():
+            blockers.append("production Dockerfile is missing")
+        if production and not (root / "railway.toml").is_file():
+            blockers.append("production deployment manifest is missing")
         if not (root / "index.html").is_file():
             blockers.append("index.html is missing")
         if not (root / "app.js").is_file():
@@ -48,5 +52,5 @@ class ReleaseManager:
             artifacts[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
         checks.extend(["quality gate passed", "required web artifacts present", "artifact hashes generated"])
         if production:
-            checks.append("production readiness checks passed")
+            checks.extend(["production Dockerfile present", "production deployment manifest present", "production readiness checks passed"])
         return ReleaseReport(True, checks, [], artifacts)
