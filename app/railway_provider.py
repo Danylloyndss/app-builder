@@ -65,7 +65,6 @@ class RailwayProvider:
             url=payload.get("url"),
         )
 
-    @staticmethod
     def status(self, deployment_id: str, timeout: int = 60) -> RailwayResult:
         if not self.authenticated():
             return RailwayResult("external_action_required", True, deployment_id=deployment_id, error="Railway authentication is required")
