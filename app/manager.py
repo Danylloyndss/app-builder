@@ -186,7 +186,15 @@ class Manager:
                     self.memory.errors.append("Acceptance checks failed after automatic repair")
                     self.memory.record("acceptance_failed", task_id=task.id, repair_attempts=quality_attempts)
                     self._save_tasks(tasks); self.memory.save(self.memory_path); return False
-                result = "Acceptance checks passed" if quality_attempts == 0 else f"Acceptance checks passed after {quality_attempts} automatic repair(s)"
+                final_test_ok, final_test_message = self._validate_generated_project(self.workspace)
+                if not final_test_ok:
+                    self.memory.errors.append("Final runtime verification failed: " + final_test_message)
+                    self.memory.record("final_runtime_verification_failed", task_id=task.id, message=final_test_message)
+                    self.memory.task_statuses[task.id] = "failed"; task.status = "failed"
+                    self._save_tasks(tasks); self.memory.save(self.memory_path)
+                    return False
+                self.memory.record("final_runtime_verification_passed", task_id=task.id, message=final_test_message)
+                result = "Acceptance and final runtime checks passed" if quality_attempts == 0 else f"Acceptance checks and final runtime verification passed after {quality_attempts} automatic repair(s)"
             else:
                 result = self.executor.execute(task.title, self.workspace, self.memory.mission, self._validate_generated_project)
                 self._check_cancelled()
