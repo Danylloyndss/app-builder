@@ -105,6 +105,7 @@ class SpecificationBuilder:
             app_type="web",
             platforms=["web", "mobile-web"] if "mobile" in features else ["web"],
             users=users, screens=screens, features=features, data_entities=entities, entity_fields=entity_fields,
+            integrations=integrations,
             business_rules=business_rules, security_requirements=security, acceptance_criteria=acceptance,
         )
 
