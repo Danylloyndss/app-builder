@@ -13,6 +13,8 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import ipaddress
+import socket
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,19 @@ class DeploymentRuntime:
     def health_check(self, url: str, timeout: float = 5.0) -> HealthResult:
         started = time.monotonic()
         try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise ValueError("health URL must use http or https")
+            host = parsed.hostname
+            try:
+                addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)}
+            except socket.gaierror:
+                addresses = set()
+            for address in addresses:
+                ip = ipaddress.ip_address(address)
+                if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved:
+                    raise ValueError("health URL resolves to a restricted network address")
             with urllib.request.urlopen(url, timeout=timeout) as response:
                 code = int(response.status)
                 return HealthResult(200 <= code < 300, url, code, int((time.monotonic() - started) * 1000), None if 200 <= code < 300 else f"unexpected HTTP status: {code}")
