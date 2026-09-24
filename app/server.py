@@ -350,6 +350,12 @@ class Handler(BaseHTTPRequestHandler):
                 bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
                 result=DeliveryCoordinator(WORKSPACE).publish(provider,bundle)
                 self._send(202 if result.external_action_required else 200,result.to_dict()); return
+            if parsed.path=="/release/recover":
+                provider=str(data.get("provider","railway")).strip()
+                release_hash=str(data.get("release_hash","")).strip()
+                if not release_hash: self._send(400,{"error":"release_hash is required"}); return
+                result=DeliveryCoordinator(WORKSPACE).recover(provider,release_hash)
+                self._send(200,result); return
             if parsed.path=="/release/status":
                 provider=str(data.get("provider","railway")).strip()
                 release_hash=str(data.get("release_hash","")).strip() or None
