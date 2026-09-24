@@ -37,7 +37,8 @@ class ExpansionLayerTests(unittest.TestCase):
             self.assertIn("index.html", report.artifacts)
 
             deployment_blocked = ReleaseManager().prepare(root, True, production=True)
-            self.assertTrue(deployment_blocked.ready)
+            self.assertFalse(deployment_blocked.ready)
+            self.assertIn("deployment readiness manifest", " ".join(deployment_blocked.blockers))
 
             (root / "railway.toml").unlink()
             blocked = ReleaseManager().prepare(root, True, production=True, authentication_ready=False)
