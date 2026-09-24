@@ -28,5 +28,14 @@ class ReleaseControllerTests(unittest.TestCase):
             self.assertEqual(ReleaseState(tmp).read()["state"], "ready")
 
 
+    def test_publish_rejects_wrong_release_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller = ReleaseController(tmp)
+            controller.state.set("ready", "abc")
+            controller.approve("abc")
+            with self.assertRaises(ValueError):
+                controller.publish("railway", "different")
+
+
 if __name__ == "__main__":
     unittest.main()
