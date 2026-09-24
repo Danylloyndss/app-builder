@@ -89,5 +89,11 @@ class DeliveryCoordinator:
                 payload["status"] = "failed"
         return payload
 
+    def recover(self, provider: str, release_hash: str) -> dict:
+        result = self.controller.recover_deployment(provider, release_hash)
+        if result is None:
+            return {"status": "no_recoverable_deployment", "release_hash": release_hash}
+        return result.to_dict()
+
     def bundle_hash(self, bundle: str | Path) -> str:
         return bundle_fingerprint(bundle)
