@@ -33,6 +33,19 @@ class ReleaseManagerTests(unittest.TestCase):
             self.assertTrue(report.ready)
             self.assertIn("mobile install manifest validated", report.checks)
 
+
+    def test_release_rejects_incomplete_icon_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._base(root)
+            (root / "manifest.webmanifest").write_text(json.dumps({
+                "name": "Test App", "short_name": "Test", "start_url": "/", "display": "standalone",
+                "icons": [{"sizes": "192x192"}]
+            }), encoding="utf-8")
+            report = ReleaseManager().prepare(root, True)
+            self.assertFalse(report.ready)
+            self.assertIn("mobile install manifest contains incomplete icons", report.blockers)
+
     def test_release_rejects_incomplete_mobile_manifest(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
