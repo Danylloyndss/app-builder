@@ -124,7 +124,7 @@ class BuildEngine:
         self.project.write_file(".app-builder/capabilities.json", json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
         self._generate_integration_artifacts(self._infer_integrations_from_mission(mission), mission)
         if "forms" in features:
-            self.project.write_file("form-schema.json", json.dumps({"fields": [{"name": "name", "type": "text", "required": True}, {"name": "note", "type": "textarea", "required": False}]}, indent=2) + "\n")
+            self.project.write_file("form-schema.json", json.dumps(self._generic_form_schema(mission), indent=2, ensure_ascii=False) + "\n")
         if "dashboard" in features:
             self.project.write_file("dashboard.json", json.dumps({"widgets": ["record_count", "recent_activity"], "refresh": "on_load"}, indent=2) + "\n")
         if "mobile" in features:
@@ -1028,6 +1028,21 @@ L’authentification de production, les signatures et les pièces jointes resten
             ]
         blocks.append("});")
         return "\n".join(blocks) + "\n"
+
+    @staticmethod
+    def _generic_form_schema(mission: str = "") -> dict:
+        lower = mission.lower()
+        fields = []
+        if any(x in lower for x in ("name", "nome", "client", "cliente", "employee", "funcion")):
+            fields.append({"name": "name", "type": "text", "required": True})
+        if any(x in lower for x in ("date", "data", "appointment", "booking", "agendamento")):
+            fields.append({"name": "date", "type": "date", "required": True})
+        if any(x in lower for x in ("amount", "price", "expense", "despesa", "valor", "payment")):
+            fields.append({"name": "amount", "type": "number", "required": True, "min": 0})
+        if not fields:
+            fields = [{"name": "name", "type": "text", "required": True}]
+        fields.append({"name": "note", "type": "textarea", "required": False})
+        return {"version": 2, "fields": fields, "validation": "required-fields-and-nonnegative-numbers"}
 
     @staticmethod
     def _readme(mission: str, features: list[str] | None = None) -> str:
