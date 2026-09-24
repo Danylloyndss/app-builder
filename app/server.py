@@ -1,6 +1,6 @@
 """HTTP control plane for App Builder V1 and TimePro."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import csv, hmac, io, json, os, threading, zipfile, unicodedata
+import csv, hashlib, hmac, io, json, os, threading, zipfile, unicodedata
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from .approvals import ApprovalStore
@@ -119,7 +119,9 @@ def _release_bundle(workspace=WORKSPACE):
     manifest={"ready":report.ready,"checks":report.checks,"blockers":report.blockers,"artifacts":report.artifacts}
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as bundle:
         for relative in sorted(report.artifacts):
-            bundle.write(root/relative, relative)
+            info=zipfile.ZipInfo(relative, date_time=(1980,1,1,0,0,0))
+            info.compress_type=zipfile.ZIP_DEFLATED
+            bundle.writestr(info, (root/relative).read_bytes())
         bundle.writestr("release_report.json", json.dumps(manifest, indent=2, ensure_ascii=False))
     with zipfile.ZipFile(out, "r") as bundle:
         names=set(bundle.namelist())
@@ -127,7 +129,7 @@ def _release_bundle(workspace=WORKSPACE):
         if names != expected:
             raise RuntimeError("release bundle contents failed integrity verification")
         for relative, expected_hash in report.artifacts.items():
-            actual_hash=__import__("hashlib").sha256(bundle.read(relative)).hexdigest()
+            actual_hash=hashlib.sha256(bundle.read(relative)).hexdigest()
             if actual_hash != expected_hash:
                 raise RuntimeError(f"release bundle hash mismatch: {relative}")
     return out, report
