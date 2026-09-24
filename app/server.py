@@ -350,6 +350,14 @@ class Handler(BaseHTTPRequestHandler):
                 bundle=Path(data.get("bundle") or Path(WORKSPACE)/".app-builder"/"release_bundle.zip")
                 result=DeliveryCoordinator(WORKSPACE).publish(provider,bundle)
                 self._send(202 if result.external_action_required else 200,result.to_dict()); return
+            if parsed.path=="/release/status":
+                provider=str(data.get("provider","railway")).strip()
+                release_hash=str(data.get("release_hash","")).strip() or None
+                deployment_id=str(data.get("deployment_id","")).strip()
+                if not deployment_id: self._send(400,{"error":"deployment_id is required"}); return
+                from .release_controller import ReleaseController
+                result=ReleaseController(WORKSPACE).check_deployment(provider,release_hash,deployment_id)
+                self._send(200 if result.status in ("published","running","queued") else 502,result.to_dict()); return
             if parsed.path=="/release/health":
                 release_hash=str(data.get("release_hash","")).strip()
                 health_url=str(data.get("url","")).strip()
