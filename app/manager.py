@@ -401,6 +401,7 @@ class Manager:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "quality_passed": release_quality_ok,
             "final_quality_repairs": final_attempts,
+            "artifact_count": len(artifacts),
             "completed_tasks": list(self.memory.completed),
             "errors": list(self.memory.errors),
             "artifacts": artifacts,
