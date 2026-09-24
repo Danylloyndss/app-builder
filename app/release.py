@@ -89,6 +89,8 @@ class ReleaseManager:
                 continue
             artifacts[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
         checks.extend(["quality gate passed", "required web artifacts present", "artifact hashes generated"])
+        if (readme.is_file()):
+            checks.append("README documentation present")
         if production:
             checks.extend(["production Dockerfile present", "production deployment manifest present", "production readiness checks passed"])
         return ReleaseReport(True, checks, [], artifacts)
