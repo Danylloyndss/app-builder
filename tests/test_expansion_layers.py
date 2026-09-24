@@ -34,6 +34,13 @@ class ExpansionLayerTests(unittest.TestCase):
             self.assertTrue(report.ready)
             self.assertIn("index.html", report.artifacts)
 
+            blocked = ReleaseManager().prepare(root, True, production=True, authentication_ready=False)
+            self.assertFalse(blocked.ready)
+            self.assertIn("authentication", " ".join(blocked.blockers))
+
+            ready = ReleaseManager().prepare(root, True, production=True)
+            self.assertTrue(ready.ready)
+
     def test_runtime_smoke_passes_backend_compile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
