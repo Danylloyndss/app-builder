@@ -8,6 +8,7 @@ import zipfile
 from app.release_fingerprint import bundle_fingerprint, is_same_release
 from app.release_verifier import ReleaseVerifier
 from app.delivery import DeliveryCoordinator
+from app.deployment_runtime import DeploymentRuntime
 
 
 class ReleaseVerifierTests(unittest.TestCase):
@@ -63,6 +64,28 @@ class ReleaseVerifierTests(unittest.TestCase):
             coordinator.prepare(bundle, require_approval=False)
             result = coordinator.publish("railway", bundle)
             self.assertTrue(result.external_action_required)
+
+
+    def test_delivery_does_not_bypass_human_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self._bundle(Path(tmp))
+            coordinator = DeliveryCoordinator(tmp)
+            prepared = coordinator.prepare(bundle, require_approval=True)
+            result = coordinator.publish("railway", bundle)
+            self.assertEqual(prepared["state"]["state"], "awaiting_approval")
+            self.assertEqual(result.status, "approval_required")
+
+    def test_health_requires_2xx(self):
+        runtime = DeploymentRuntime()
+        class Response:
+            status = 302
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+        import unittest.mock as mock
+        with mock.patch("urllib.request.urlopen", return_value=Response()):
+            result = runtime.health_check("http://example.test")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status_code, 302)
 
 
 if __name__ == "__main__":
