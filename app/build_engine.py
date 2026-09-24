@@ -36,6 +36,8 @@ class BuildEngine:
             return self.implement_feature("list", mission)
         if "generate backend and persistence layer" in normalized or "validate backend and persistence contract" in normalized:
             return self.implement_backend(mission)
+        if "implement safe integration adapters" in normalized:
+            return self.implement_integrations(mission)
         if "implement requested functionality" in normalized:
             return self.implement(mission)
         if "repair after test failure" in normalized:
@@ -131,6 +133,26 @@ class BuildEngine:
             self.project.write_file("calculator.json", json.dumps({"operations": ["add", "subtract", "multiply", "divide"], "divide_by_zero": "reject"}, indent=2) + "\n")
         if "list" in features:
             self.project.write_file("list.json", json.dumps({"sort": "newest_first", "empty_state": True}, indent=2) + "\n")
+
+    def implement_integrations(self, mission: str) -> str:
+        integrations = self._infer_integrations_from_mission(mission)
+        root = self.project.root / ".app-builder" / "integrations"
+        root.mkdir(parents=True, exist_ok=True)
+        for name in integrations:
+            action = {
+                "email": "send_email", "payments": "create_payment", "maps": "map_or_geocode",
+                "notifications": "send_notification", "calendar": "create_event", "messaging": "send_message"
+            }[name]
+            source = {
+                "name": name,
+                "action": action,
+                "approval_required": True,
+                "external_call": False,
+                "status": "adapter_ready",
+                "execute": "blocked_until_human_approval",
+            }
+            (root / f"{name}.json").write_text(json.dumps(source, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        return f"Prepared {len(integrations)} approval-gated integration adapter(s)"
 
     def implement_backend(self, mission: str) -> str:
         if self.is_timepro(mission):
