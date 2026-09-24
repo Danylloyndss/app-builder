@@ -5,12 +5,14 @@ import json
 
 from .executor import Executor
 from .project_validator import ProjectValidator
+from .runtime import RuntimeSmokeTest
 
 
 class Tester:
     def __init__(self) -> None:
         self.executor = Executor()
         self.validator = ProjectValidator()
+        self.runtime = RuntimeSmokeTest()
 
     @staticmethod
     def _is_timepro(workspace: Path) -> bool:
@@ -102,6 +104,10 @@ class Tester:
             )
             if code != 0:
                 return False, f"Generated backend syntax check failed: {output[-1500:]}"
+
+        runtime_ok, runtime_message = self.runtime.run(workspace)
+        if not runtime_ok:
+            return False, "Runtime smoke test failed: " + runtime_message
 
         if self._is_timepro(workspace):
             ok, message = self._test_timepro(workspace)
