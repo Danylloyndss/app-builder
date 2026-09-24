@@ -371,6 +371,20 @@ with tempfile.TemporaryDirectory() as tmp:
         else:
             raise AssertionError("TimePro backend did not become healthy")
 
+        try:
+            call(base, "/api/timepro/timesheets", "POST", {
+                "employee": "Test Employee",
+                "company": "Test Company",
+                "work_date": "2026-01-02",
+                "location": "Test Site",
+                "start_time": "08:00",
+                "pause_minutes": -1,
+                "end_time": "17:00",
+            })
+            raise AssertionError("negative pause accepted")
+        except Exception as exc:
+            assert "HTTP Error 400" in str(exc)
+
         created = call(base, "/api/timepro/timesheets", "POST", {
             "employee": "Test Employee",
             "company": "Test Company",
@@ -433,7 +447,10 @@ def minutes(value):
     return h * 60 + m
 
 def total(start, end, pause):
-    value = minutes(end) - minutes(start) - int(pause)
+    pause = int(pause)
+    if pause < 0:
+        raise ValueError("pause must be zero or positive")
+    value = minutes(end) - minutes(start) - pause
     if value <= 0: raise ValueError("end time must be after start time and pause")
     return value
 
