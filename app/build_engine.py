@@ -984,14 +984,17 @@ L’authentification de production, les signatures et les pièces jointes resten
                 "  const start = document.querySelector('#start');",
                 "  const end = document.querySelector('#end');",
                 "  const total = document.querySelector('#total');",
-                "  const calculate = () => {",
+                "  const calculateTime = () => {",
                 "    if (!start || !end || !total || !start.value || !end.value) return;",
                 "    const a = start.value.split(':').map(Number); const b = end.value.split(':').map(Number);",
                 "    let minutes = (b[0] * 60 + b[1]) - (a[0] * 60 + a[1]);",
                 "    if (minutes < 0) minutes += 1440;",
-                "    total.textContent = `${Math.floor(minutes / 60)}h ${minutes % 60}min`;",
+                "    total.textContent = String(Math.floor(minutes / 60)) + 'h ' + String(minutes % 60) + 'min';",
                 "  };",
-                "  start?.addEventListener('input', calculate); end?.addEventListener('input', calculate);",
+                "  start?.addEventListener('input', calculateTime); end?.addEventListener('input', calculateTime);",
+                "  const calcA = document.querySelector('#calc-a'); const calcB = document.querySelector('#calc-b'); const calcResult = document.querySelector('#calc-result');",
+                "  const calculateGeneric = () => { if (!calcA || !calcB || !calcResult) return; const a = Number(calcA.value); const b = Number(calcB.value); if (!Number.isFinite(a) || !Number.isFinite(b)) return; calcResult.textContent = String(a + b); };",
+                "  calcA?.addEventListener('input', calculateGeneric); calcB?.addEventListener('input', calculateGeneric);",
             ]
         if "storage" in features:
             blocks += [
@@ -1067,7 +1070,7 @@ L’authentification de production, les signatures et les pièces jointes resten
         if "forms" in features:
             sections.append('<form data-save><h2>New entry</h2><input name="date" type="date"><input name="location" placeholder="Location / site"><input id="start" name="start" type="time"><input name="break" type="number" min="0" placeholder="Break (minutes)"><input id="end" name="end" type="time"><textarea name="note" placeholder="Optional note"></textarea><button>Save</button></form>')
         if "calculator" in features:
-            sections.append('<section><h2>Total</h2><strong id="total">0h 0min</strong></section>')
+            sections.append('<section><h2>Calculator</h2><input id="calc-a" type="number" inputmode="decimal" placeholder="First value"><input id="calc-b" type="number" inputmode="decimal" placeholder="Second value"><strong id="calc-result">0</strong><small id="total">Time total appears when time fields are present.</small></section>')
         if "list" in features:
             sections.append('<section><h2>History</h2><ul id="history-list"><li>No records yet</li></ul></section>')
         if "dashboard" in features:
