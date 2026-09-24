@@ -48,6 +48,13 @@ class DeploymentAttempts:
         self._save(items)
         return {"allowed": True, **attempt}
 
+    def find_active(self, provider: str, release_hash: str) -> dict | None:
+        items = self._load()
+        for item in reversed(items):
+            if item.get("provider") == provider and item.get("release_hash") == release_hash and item.get("status") in {"queued", "running", "waiting_external_action"}:
+                return item
+        return None
+
     def finish(self, attempt_id: str, status: str, **details) -> dict | None:
         items = self._load()
         for item in reversed(items):
