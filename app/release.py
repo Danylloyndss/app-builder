@@ -42,6 +42,16 @@ class ReleaseManager:
             blockers.append("index.html is missing")
         if not (root / "app.js").is_file():
             blockers.append("app.js is missing")
+        backend_manifest = root / ".app-builder" / "backend.json"
+        if production and backend_manifest.is_file():
+            try:
+                manifest = json.loads(backend_manifest.read_text(encoding="utf-8"))
+                if not manifest.get("entrypoint") or not manifest.get("health"):
+                    blockers.append("backend manifest is incomplete")
+                else:
+                    checks.append("backend runtime manifest validated")
+            except (OSError, ValueError):
+                blockers.append("backend manifest is invalid JSON")
         if blockers:
             return ReleaseReport(False, checks, blockers, {})
 
