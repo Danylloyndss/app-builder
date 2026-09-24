@@ -128,7 +128,20 @@ class BuildEngine:
         if "dashboard" in features:
             self.project.write_file("dashboard.json", json.dumps({"widgets": ["record_count", "recent_activity"], "refresh": "on_load"}, indent=2) + "\n")
         if "mobile" in features:
-            self.project.write_file("mobile.json", json.dumps({"responsive": True, "viewport": "width=device-width, initial-scale=1", "touch_target_min_px": 44}, indent=2) + "\n")
+            self.project.write_file("mobile.json", json.dumps({
+                "responsive": True,
+                "viewport": "width=device-width, initial-scale=1",
+                "touch_target_min_px": 44,
+                "installable": True,
+                "manifest": "manifest.webmanifest",
+            }, indent=2) + "\n")
+            self.project.write_file("manifest.webmanifest", json.dumps({
+                "name": self._title(mission),
+                "short_name": self._title(mission)[:24],
+                "start_url": "./",
+                "display": "standalone",
+                "description": mission,
+            }, ensure_ascii=False, indent=2) + "\n")
         if "calculator" in features:
             self.project.write_file("calculator.json", json.dumps({
                 "operations": ["add", "subtract", "multiply", "divide"],
@@ -1102,6 +1115,8 @@ L’authentification de production, les signatures et les pièces jointes resten
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="manifest" href="manifest.webmanifest">
   <title>{safe_title}</title>
   <style>body{{font-family:system-ui,sans-serif;max-width:900px;margin:auto;padding:24px;background:#f7f7f7}}main{{display:grid;gap:20px}}form,section{{background:white;border:1px solid #ddd;border-radius:16px;padding:20px;display:grid;gap:10px}}input,textarea,button{{font:inherit;padding:10px;border:1px solid #ccc;border-radius:10px}}button{{cursor:pointer}}.cards{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}}article{{padding:20px;border:1px solid #ddd;border-radius:12px}}@media(max-width:600px){{.cards{{grid-template-columns:1fr}}}}</style>
 </head>
