@@ -66,6 +66,21 @@ class RailwayProvider:
         )
 
     @staticmethod
+    def status(self, deployment_id: str, timeout: int = 60) -> RailwayResult:
+        if not self.authenticated():
+            return RailwayResult("external_action_required", True, deployment_id=deployment_id, error="Railway authentication is required")
+        command = ["railway", "status", "--json"]
+        try:
+            completed = subprocess.run(command, cwd=str(self.workspace), capture_output=True, text=True, timeout=timeout, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return RailwayResult("failed", False, deployment_id=deployment_id, error=str(exc))
+        if completed.returncode != 0:
+            return RailwayResult("failed", False, deployment_id=deployment_id, error=completed.stderr[-4000:] or completed.stdout[-4000:])
+        payload = self._parse(completed.stdout)
+        state = str(payload.get("status") or payload.get("state") or "").lower()
+        mapping = {"success": "published", "successful": "published", "deployed": "published", "failed": "failed", "crashed": "failed", "building": "running", "deploying": "running", "queued": "queued"}
+        return RailwayResult(mapping.get(state, "running"), False, deployment_id=deployment_id, url=payload.get("url"))
+    
     def _parse(output: str) -> dict:
         for line in reversed(output.splitlines()):
             try:
