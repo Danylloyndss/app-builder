@@ -145,30 +145,43 @@ class Tester:
         
         tests_dir = workspace / "tests"
         if tests_dir.exists():
+            scripts = sorted(tests_dir.glob("test*.py"))
+            # Generated integration checks are executable scripts rather than
+            # unittest classes. Detect that shape before discovery so a script
+            # is not imported/executed once by unittest and then a second time
+            # by the fallback runner.
+            has_unittest_tests = any(
+                "unittest.TestCase" in script.read_text(encoding="utf-8")
+                or "unittest.main()" in script.read_text(encoding="utf-8")
+                for script in scripts
+            )
+            if not has_unittest_tests and scripts:
+                for script in scripts:
+                    script_code, script_output = self.executor.run_command(
+                        ["python", str(script.relative_to(workspace))],
+                        workspace,
+                        cancel_check=cancel_check,
+                    )
+                    if script_code != 0:
+                        return False, f"Generated integration test failed: {script.name}: {script_output[-2000:]}"
+                return True, "Generated project passed structural and executable integration tests"
             code, output = self.executor.run_command(
                 ["python", "-m", "unittest", "discover", "-s", "tests", "-v"],
                 workspace,
                 cancel_check=cancel_check,
             )
-            no_tests = code == 0 and ("Ran 0 tests" in output or "NO TESTS RAN" in output)
-            if code != 0 or no_tests:
-                # Some generated integration checks are executable test scripts
-                # rather than unittest.TestCase classes. unittest can report a
-                # zero-test discovery result even though the files contain
-                # executable assertions. Run those scripts directly as a safe
-                # fallback, while still failing ordinary test-suite errors.
-                if no_tests or "NO TESTS RAN" in output:
-                    scripts = sorted(tests_dir.glob("test*.py"))
-                    if scripts:
-                        for script in scripts:
-                            script_code, script_output = self.executor.run_command(
-                                ["python", str(script.relative_to(workspace))],
-                                workspace,
-                                cancel_check=cancel_check,
-                            )
-                            if script_code != 0:
-                                return False, f"Generated integration test failed: {script.name}: {script_output[-2000:]}"
-                        return True, "Generated project passed structural and executable integration tests"
+            if code != 0:
                 return False, f"Project tests failed: {output[-2000:]}"
+            if "Ran 0 tests" in output or "NO TESTS RAN" in output:
+                for script in scripts:
+                    script_code, script_output = self.executor.run_command(
+                        ["python", str(script.relative_to(workspace))],
+                        workspace,
+                        cancel_check=cancel_check,
+                    )
+                    if script_code != 0:
+                        return False, f"Generated integration test failed: {script.name}: {script_output[-2000:]}"
+                if scripts:
+                    return True, "Generated project passed structural and executable integration tests"
 
         return True, "Generated project passed structural and functional tests"
