@@ -46,6 +46,16 @@ class ReleaseManager:
         readme = root / "README.md"
         if not readme.is_file() or not readme.read_text(encoding="utf-8").strip():
             blockers.append("README.md is missing or empty")
+        mobile_manifest = root / "manifest.webmanifest"
+        if mobile_manifest.is_file():
+            try:
+                mobile = json.loads(mobile_manifest.read_text(encoding="utf-8"))
+                if mobile.get("display") != "standalone" or not mobile.get("start_url"):
+                    blockers.append("mobile install manifest is incomplete")
+                else:
+                    checks.append("mobile install manifest validated")
+            except (OSError, ValueError):
+                blockers.append("mobile install manifest is invalid JSON")
         deployment_manifest = root / ".app-builder" / "deployment.json"
         if production and not deployment_manifest.is_file():
             blockers.append("deployment readiness manifest is missing")
