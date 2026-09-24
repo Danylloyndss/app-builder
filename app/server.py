@@ -147,6 +147,9 @@ def _release_bundle(workspace=WORKSPACE, production=None):
                 raise RuntimeError(f"release bundle hash mismatch: {relative}")
     DeploymentAdapter().save(root)
     ReleaseState(root).set("ready", hashlib.sha256(out.read_bytes()).hexdigest())
+    bundle_hash=hashlib.sha256(out.read_bytes()).hexdigest()
+    manifest_path=root/".app-builder"/"bundle_manifest.json"
+    manifest_path.write_text(json.dumps({"format_version":1,"bundle_sha256":bundle_hash,"artifact_count":len(report.artifacts),"production":bool(production)},indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     return out, report
 
 class Handler(BaseHTTPRequestHandler):
@@ -258,6 +261,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=="/artifacts": self._send(200,{"files":self._artifact_files()}); return
         if self.path=="/artifacts.zip":
             body=self._artifact_zip(); self.send_response(200); self.send_header("Content-Type","application/zip"); self.send_header("Content-Disposition","attachment; filename=app-builder-artifacts.zip"); self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body); return
+        if self.path=="/release/state":
+            if not self._authorized(): self._send(401,{"error":"authentication required"}); return
+            self._send(200,ReleaseState(WORKSPACE).read()); return
         if self.path=="/release/bundle":
             if not self._authorized(): self._send(401,{"error":"authentication required"}); return
             out=Path(WORKSPACE)/".app-builder"/"release_bundle.zip"
