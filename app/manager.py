@@ -204,6 +204,8 @@ class Manager:
                     self._save_tasks(tasks); self.memory.save(self.memory_path)
                     return False
                 self.memory.record("final_runtime_verification_passed", task_id=task.id, message=final_test_message, repair_attempts=runtime_attempts)
+                self.memory.diagnostics["final_runtime_verification_passed"] = True
+                self.memory.diagnostics["final_runtime_repairs"] = runtime_attempts
                 total_repairs = quality_attempts + runtime_attempts
                 result = "Acceptance and final runtime checks passed" if total_repairs == 0 else f"Acceptance checks and final runtime verification passed after {total_repairs} automatic repair(s)"
             else:
