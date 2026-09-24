@@ -96,6 +96,15 @@ class BuildEngineTests(unittest.TestCase):
         self.assertIn("Expense", spec.entity_fields)
         self.assertIn("amount", spec.entity_fields["Expense"])
         self.assertTrue(any("Expense amount" in rule for rule in spec.business_rules))
+    def test_generic_integrations_generate_safe_boundaries(self) -> None:
+        mission = "Create a booking app with calendar, email notifications and payments"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            engine = BuildEngine(Path(temp_dir))
+            engine.implement(mission)
+            data = json.loads((Path(temp_dir) / ".app-builder" / "integrations.json").read_text())
+            self.assertEqual(set(data["integrations"]), {"calendar", "email", "notifications", "payments"})
+            self.assertTrue(all(item["approval_required"] for item in data["integrations"].values()))
+
     def test_generic_storage_generates_schema_and_contract(self) -> None:
         mission = "Create a mobile client records app with a form, data storage and history"
         with tempfile.TemporaryDirectory() as temp_dir:
