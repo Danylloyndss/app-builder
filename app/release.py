@@ -43,6 +43,9 @@ class ReleaseManager:
             blockers.append("index.html is missing")
         if not (root / "app.js").is_file():
             blockers.append("app.js is missing")
+        readme = root / "README.md"
+        if not readme.is_file() or not readme.read_text(encoding="utf-8").strip():
+            blockers.append("README.md is missing or empty")
         deployment_manifest = root / ".app-builder" / "deployment.json"
         if production and not deployment_manifest.is_file():
             blockers.append("deployment readiness manifest is missing")
