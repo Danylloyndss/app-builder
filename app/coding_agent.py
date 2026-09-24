@@ -103,12 +103,31 @@ class CodingAgent:
                 command = item.get("command")
                 if not isinstance(command, list) or not all(isinstance(x, str) and x for x in command):
                     raise ValueError("Invalid run action")
-                if command[0] not in {"python", "python3", "pytest", "node", "npm"}:
-                    raise ValueError("Command is not allowlisted")
+                self._validate_command(command)
                 actions.append(AgentAction("run", command=command))
             else:
                 raise ValueError("Unsupported model action")
         return actions
+
+    @staticmethod
+    def _validate_command(command: list[str]) -> None:
+        """Allow only narrowly-scoped validation/build commands."""
+        program = command[0]
+        if program in {"python", "python3"}:
+            if len(command) < 3 or command[1] != "-m" or command[2] not in {"py_compile", "unittest", "pytest"}:
+                raise ValueError("Python command is restricted to test/compile modules")
+            return
+        if program == "pytest":
+            return
+        if program == "node":
+            if len(command) >= 2 and command[1] in {"--check", "--test"}:
+                return
+            raise ValueError("Node command is restricted to syntax/test checks")
+        if program == "npm":
+            if command[1:] in (["test"], ["run", "test"], ["run", "build"]):
+                return
+            raise ValueError("npm command is restricted to test/build scripts")
+        raise ValueError("Command is not allowlisted")
 
     def _request(self, payload: dict) -> str:
         url = os.environ["APP_BUILDER_LLM_URL"]
