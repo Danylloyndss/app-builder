@@ -46,6 +46,11 @@ class ExpansionLayerTests(unittest.TestCase):
             self.assertIn("authentication", " ".join(blocked.blockers))
             self.assertIn("deployment manifest", " ".join(blocked.blockers))
 
+            (root / "railway.toml").write_text("[deploy]\nstartCommand = \"python -m app.server\"")
+            (root / ".app-builder").mkdir(exist_ok=True)
+            (root / ".app-builder" / "deployment.json").write_text('{"configured":true}')
+            (root / "backend.py").write_text("print('ok')\n")
+            (root / ".app-builder" / "backend.json").write_text('{"entrypoint":"backend.py","health":"/health"}')
             ready = ReleaseManager().prepare(root, True, production=True)
             self.assertTrue(ready.ready)
 
