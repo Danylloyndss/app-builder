@@ -37,12 +37,6 @@ class Manager:
         self.release = ReleaseManager()
         self.executor = Executor()
         self._release_production = False
-
-    def configure_production_release(self, enabled: bool = True) -> None:
-        """Enable production-readiness enforcement for the current mission."""
-        self._release_production = bool(enabled)
-        self.memory.diagnostics["production_release_requested"] = self._release_production
-        self.memory.save(self.memory_path)
         self.tester = Tester()
         self.policy = ActionPolicy()
         self.approvals = ApprovalStore(self.workspace / "approvals.json")
@@ -50,6 +44,12 @@ class Manager:
         self.diagnoser = FailureDiagnoser()
         self.max_retries = max_retries
         self.progress_callback = progress_callback
+
+    def configure_production_release(self, enabled: bool = True) -> None:
+        """Enable production-readiness enforcement for the current mission."""
+        self._release_production = bool(enabled)
+        self.memory.diagnostics["production_release_requested"] = self._release_production
+        self.memory.save(self.memory_path)
 
     def _progress(self, status=None):
         if self.progress_callback:
@@ -358,7 +358,16 @@ class Manager:
             "artifacts": artifacts,
         }
         (artifact_root / "build_report.json").write_text(json.dumps(build_report, indent=2, ensure_ascii=False), encoding="utf-8")
-        release_report = self.release.prepare(self.workspace, quality_ok)
+        production = bool(self.memory.diagnostics.get("production_release_requested", self._release_production))
+        authentication_ready = bool(self.memory.diagnostics.get("authentication_ready", True))
+        deployment_ready = bool(self.memory.diagnostics.get("deployment_ready", True))
+        release_report = self.release.prepare(
+            self.workspace,
+            quality_ok,
+            production=production,
+            authentication_ready=authentication_ready,
+            deployment_ready=deployment_ready,
+        )
         release_report.save(artifact_root / "release_report.json")
         self.memory.diagnostics["release_ready"] = release_report.ready
         self.memory.diagnostics["release_blockers"] = list(release_report.blockers)
