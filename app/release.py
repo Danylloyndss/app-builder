@@ -52,6 +52,8 @@ class ReleaseManager:
                 mobile = json.loads(mobile_manifest.read_text(encoding="utf-8"))
                 if mobile.get("display") != "standalone" or not mobile.get("start_url"):
                     blockers.append("mobile install manifest is incomplete")
+                elif not mobile.get("name") or not mobile.get("short_name"):
+                    blockers.append("mobile install manifest has no app name")
                 else:
                     checks.append("mobile install manifest validated")
             except (OSError, ValueError):
