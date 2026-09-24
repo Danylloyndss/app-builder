@@ -11,6 +11,10 @@ class DeploymentAttemptsTests(unittest.TestCase):
             first = attempts.begin("railway", "abc")
             self.assertTrue(first["allowed"])
             self.assertFalse(attempts.begin("railway", "abc")["allowed"])
+            attempts.finish(first["attempt_id"], "queued", deployment_id="dep-1", url="https://example.test")
+            stored = attempts._load()[-1]
+            self.assertEqual(stored["deployment_id"], "dep-1")
+            self.assertEqual(stored["url"], "https://example.test")
             attempts.finish(first["attempt_id"], "failed")
             second = attempts.begin("railway", "abc")
             self.assertTrue(second["allowed"])
