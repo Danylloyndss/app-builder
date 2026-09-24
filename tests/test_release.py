@@ -36,6 +36,16 @@ class ReleaseManagerTests(unittest.TestCase):
 
 
 
+
+    def test_release_rejects_whitespace_only_readme(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._base(root)
+            (root / "README.md").write_text("   \n\t", encoding="utf-8")
+            report = ReleaseManager().prepare(root, True)
+            self.assertFalse(report.ready)
+            self.assertIn("README.md is missing or empty", report.blockers)
+
     def test_release_records_artifact_inventory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
