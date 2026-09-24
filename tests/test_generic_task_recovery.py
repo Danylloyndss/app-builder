@@ -18,7 +18,7 @@ class GenericTaskRecoveryTests(unittest.TestCase):
 
             calls = []
 
-            def execute(task_text, workspace, mission):
+            def execute(task_text, workspace, mission, validator=None):
                 calls.append(task_text)
                 if task_text == task.title and calls.count(task.title) == 1:
                     raise RuntimeError("temporary build failure")
