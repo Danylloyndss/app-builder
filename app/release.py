@@ -43,6 +43,8 @@ class ReleaseManager:
         if not (root / "app.js").is_file():
             blockers.append("app.js is missing")
         deployment_manifest = root / ".app-builder" / "deployment.json"
+        if production and not deployment_manifest.is_file():
+            blockers.append("deployment readiness manifest is missing")
         if production and deployment_manifest.is_file():
             try:
                 deployment = json.loads(deployment_manifest.read_text(encoding="utf-8"))
@@ -53,6 +55,8 @@ class ReleaseManager:
             except (OSError, ValueError):
                 blockers.append("deployment manifest is invalid JSON")
         backend_manifest = root / ".app-builder" / "backend.json"
+        if production and not backend_manifest.is_file():
+            blockers.append("backend manifest is missing")
         if production and backend_manifest.is_file():
             try:
                 manifest = json.loads(backend_manifest.read_text(encoding="utf-8"))
