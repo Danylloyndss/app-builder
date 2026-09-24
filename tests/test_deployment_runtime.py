@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from app.deployment_runtime import DeploymentRuntime
@@ -20,6 +21,21 @@ class DeploymentRuntimeTests(unittest.TestCase):
             )
             self.assertTrue(result["ok"])
             self.assertEqual(result["returncode"], 0)
+
+    def test_health_rejects_local_targets(self):
+        result = DeploymentRuntime().health_check("http://127.0.0.1:8080/health")
+        self.assertFalse(result.ok)
+        self.assertIn("restricted", result.error)
+
+    def test_health_accepts_2xx(self):
+        response = mock.Mock(status=204)
+        response.__enter__ = mock.Mock(return_value=response)
+        response.__exit__ = mock.Mock(return_value=False)
+        with mock.patch("urllib.request.urlopen", return_value=response):
+            with mock.patch("socket.getaddrinfo", return_value=[(2,1,6,"",("example.com",443))]):
+                result = DeploymentRuntime().health_check("https://example.com/health")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.status_code, 204)
 
     def test_history_is_durable_and_bounded(self):
         with tempfile.TemporaryDirectory() as tmp:
