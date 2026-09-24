@@ -32,7 +32,7 @@ class DeploymentRuntimeTests(unittest.TestCase):
         response.__enter__ = mock.Mock(return_value=response)
         response.__exit__ = mock.Mock(return_value=False)
         with mock.patch("urllib.request.urlopen", return_value=response):
-            with mock.patch("socket.getaddrinfo", return_value=[(2,1,6,"",("example.com",443))]):
+            with mock.patch("socket.getaddrinfo", return_value=[(2,1,6,"",("93.184.216.34",443))]):
                 result = DeploymentRuntime().health_check("https://example.com/health")
         self.assertTrue(result.ok)
         self.assertEqual(result.status_code, 204)
