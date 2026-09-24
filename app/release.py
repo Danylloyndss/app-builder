@@ -93,7 +93,12 @@ class ReleaseManager:
         for path in sorted(root.rglob("*")):
             if not path.is_file() or ".app-builder" in path.parts or ".git" in path.parts:
                 continue
-            artifacts[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+            relative = str(path.relative_to(root))
+            if relative in {"state.json", "release.zip"}:
+                continue
+            artifacts[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if not artifacts:
+            return ReleaseReport(False, checks, ["no release artifacts were generated"], {})
         checks.extend(["quality gate passed", "required web artifacts present", "artifact hashes generated"])
         if (readme.is_file()):
             checks.append("README documentation present")
