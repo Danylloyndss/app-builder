@@ -36,6 +36,16 @@ class TaskBuilderTests(unittest.TestCase):
             self.assertIn("acceptance", data[-1])
 
 
+    def test_integrations_create_approval_gated_task_before_implementation(self):
+        spec = SpecificationBuilder().build("Create a booking app with calendar notifications and email")
+        architecture = ArchitectureBuilder().build(spec)
+        tasks = TaskBuilder().build(spec, architecture)
+        integration = next(task for task in tasks if task.id == "integrations")
+        implementation = next(task for task in tasks if task.id == "implement")
+        self.assertTrue(integration.requires_approval)
+        self.assertEqual(integration.dependencies, ["structure"])
+        self.assertEqual(implementation.dependencies, ["integrations"])
+
     def test_backend_storage_task_has_approval_flag_boolean(self):
         spec = SpecificationBuilder().build("Create a notes app with data storage")
         architecture = ArchitectureBuilder().build(spec)
