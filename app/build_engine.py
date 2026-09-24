@@ -90,6 +90,20 @@ class BuildEngine:
         self._save_features(features)
         return f"Implemented generated app: {title} ({len(features)} features)"
 
+    def _generate_integration_artifacts(self, integrations: list[str], mission: str) -> None:
+        configs = {
+            "email": {"action": "send_email", "approval_required": True},
+            "payments": {"action": "create_payment", "approval_required": True},
+            "maps": {"action": "map_or_geocode", "approval_required": True},
+            "notifications": {"action": "send_notification", "approval_required": True},
+            "calendar": {"action": "create_event", "approval_required": True},
+            "messaging": {"action": "send_message", "approval_required": True},
+        }
+        self.project.write_file(".app-builder/integrations.json", json.dumps({
+            "mission": mission,
+            "integrations": {k: configs[k] for k in integrations if k in configs}
+        }, indent=2, ensure_ascii=False) + "\n")
+
     def _generate_feature_artifacts(self, features: list[str], mission: str) -> None:
         meta = {
             "generated_by": "App Builder V1",
@@ -106,6 +120,7 @@ class BuildEngine:
             },
         }
         self.project.write_file(".app-builder/capabilities.json", json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
+        self._generate_integration_artifacts(self._infer_integrations_from_mission(mission), mission)
         if "forms" in features:
             self.project.write_file("form-schema.json", json.dumps({"fields": [{"name": "name", "type": "text", "required": True}, {"name": "note", "type": "textarea", "required": False}]}, indent=2) + "\n")
         if "dashboard" in features:
@@ -714,6 +729,19 @@ if __name__ == "__main__":
 
     def _save_features(self, features: list[str]) -> None:
         self.project.write_file(".app-builder/features.json", json.dumps(features, indent=2, ensure_ascii=False) + "\n")
+
+    @staticmethod
+    def _infer_integrations_from_mission(mission: str) -> list[str]:
+        lower = mission.lower()
+        groups = {
+            "email": ("email", "e-mail", "mail"),
+            "payments": ("payment", "pagamento", "stripe"),
+            "maps": ("map", "gps", "location", "endereço"),
+            "notifications": ("notification", "notificação", "alert"),
+            "calendar": ("calendar", "calendário", "agenda"),
+            "messaging": ("whatsapp", "message", "mensagem"),
+        }
+        return [name for name, words in groups.items() if any(word in lower for word in words)]
 
     def _load_features(self) -> list[str]:
         path = self.project.root / ".app-builder/features.json"
