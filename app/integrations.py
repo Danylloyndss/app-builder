@@ -62,6 +62,16 @@ class IntegrationRegistry:
             return False, "missing runtime secret(s): " + ", ".join(missing)
         return True, "integration is configured"
 
+    def all_ready(self, approved: bool = False) -> tuple[bool, dict[str, str]]:
+        """Check every registered integration without exposing secret values."""
+        messages = {}
+        ready = True
+        for name in self._configs:
+            ok, message = self.ready(name, approved=approved)
+            messages[name] = message
+            ready = ready and ok
+        return ready, messages
+
     def snapshot(self) -> Mapping[str, dict]:
         return {
             name: {
