@@ -100,6 +100,41 @@ class ReleaseManagerTests(unittest.TestCase):
             self.assertFalse(report.ready)
             self.assertIn("mobile install manifest is incomplete", report.blockers)
 
+    def test_release_blocks_production_without_authentication(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._base(root)
+            report = ReleaseManager().prepare(
+                root, True, production=True,
+                authentication_ready=False, deployment_ready=True
+            )
+            self.assertFalse(report.ready)
+            self.assertIn("production authentication is not configured", report.blockers)
+
+    def test_release_blocks_production_without_deployment(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._base(root)
+            report = ReleaseManager().prepare(
+                root, True, production=True,
+                authentication_ready=True, deployment_ready=False
+            )
+            self.assertFalse(report.ready)
+            self.assertIn("production deployment is not configured", report.blockers)
+
+    def test_verify_bundle_accepts_matching_artifact_hash(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            bundle = root / "release.zip"
+            payload = "console.log('ok')"
+            digest = __import__("hashlib").sha256(payload.encode("utf-8")).hexdigest()
+            with zipfile.ZipFile(bundle, "w") as archive:
+                archive.writestr("release_report.json", json.dumps({"artifacts": {"app.js": digest}}))
+                archive.writestr("app.js", payload)
+            result = ReleaseManager().verify_bundle(bundle)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["artifact_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
