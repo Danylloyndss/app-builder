@@ -80,6 +80,7 @@ class RailwayProvider:
         mapping = {"success": "published", "successful": "published", "deployed": "published", "failed": "failed", "crashed": "failed", "building": "running", "deploying": "running", "queued": "queued"}
         return RailwayResult(mapping.get(state, "running"), False, deployment_id=deployment_id, url=payload.get("url"))
     
+    @staticmethod
     def _parse(output: str) -> dict:
         for line in reversed(output.splitlines()):
             try:
