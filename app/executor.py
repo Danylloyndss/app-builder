@@ -3,16 +3,28 @@
 from pathlib import Path
 
 from .build_engine import BuildEngine
+from .coding_agent import CodingAgent
 from .workspace import Workspace
 
 
 class Executor:
     def execute(self, task: str, workspace: Path, mission: str = "") -> str:
-        """Execute a build task inside the project's sandbox workspace."""
+        """Execute deterministic handlers, then delegate unknown work to the coding agent."""
         project = Workspace(workspace)
         project.write_file(".app-builder/last_task.txt", task + "\n")
-        return BuildEngine(workspace).execute(task, mission)
+        engine = BuildEngine(workspace)
+        result = engine.execute(task, mission)
+        if not result.startswith("No build handler"):
+            return result
+
+        agent = CodingAgent(workspace, max_iterations=3)
+        if not agent.model_configured:
+            return result
+
+        outcome = agent.run(task)
+        if not outcome.success:
+            raise RuntimeError("; ".join(outcome.errors[-3:]) or "Coding agent failed")
+        return "Coding agent completed: " + "; ".join(outcome.actions)
 
     def run_command(self, command: list[str], workspace: Path, timeout: int = 120, cancel_check=None) -> tuple[int, str]:
-        """Run a project command through the sandbox workspace."""
         return Workspace(workspace).run(command, timeout=timeout, cancel_check=cancel_check)
