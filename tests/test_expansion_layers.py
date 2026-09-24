@@ -48,6 +48,16 @@ class ExpansionLayerTests(unittest.TestCase):
             ready = ReleaseManager().prepare(root, True, production=True)
             self.assertTrue(ready.ready)
 
+            (root / ".app-builder").mkdir(exist_ok=True)
+            (root / ".app-builder" / "backend.json").write_text('{"entrypoint":"backend.py","health":"/health"}')
+            manifest_ready = ReleaseManager().prepare(root, True, production=True)
+            self.assertTrue(manifest_ready.ready)
+
+            (root / ".app-builder" / "backend.json").write_text('{"entrypoint":"backend.py"}')
+            manifest_blocked = ReleaseManager().prepare(root, True, production=True)
+            self.assertFalse(manifest_blocked.ready)
+            self.assertIn("backend manifest", " ".join(manifest_blocked.blockers))
+
     def test_runtime_smoke_passes_backend_compile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
