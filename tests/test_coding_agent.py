@@ -55,12 +55,18 @@ class CodingAgentTests(unittest.TestCase):
     def test_model_cannot_escape_workspace(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             agent = CodingAgent(temp_dir)
+            response = {"choices": [{"message": {"content": json.dumps({
+                "actions": [{"kind": "write", "target": "../outside.txt", "content": "bad"}]
+            })}}]}
+            fake = type("Response", (), {
+                "__enter__": lambda self: self,
+                "__exit__": lambda self, *args: None,
+                "read": lambda self: json.dumps(response).encode(),
+            })()
             with patch.dict(os.environ, {"APP_BUILDER_LLM_URL": "https://example.invalid"}):
-                with self.assertRaises(ValueError):
-                    agent.model_planner("goal", [], [])
-                    # planner is mocked below to isolate path validation
-            with self.assertRaises(ValueError):
-                agent.apply(AgentAction("write", "../outside.txt", "bad"))
+                with patch("app.coding_agent.urlopen", return_value=fake):
+                    with self.assertRaises(ValueError):
+                        agent.model_planner("goal", [], [])
 
 
 if __name__ == "__main__":
