@@ -107,6 +107,26 @@ def _recover_stale_job(job, now):
 
 def _start_job_worker(): threading.Thread(target=_run_pending_jobs,name="app-builder-job-worker",daemon=True).start()
 
+def _release_bundle(workspace=WORKSPACE):
+    """Create a deterministic zip bundle from a release workspace."""
+    root=Path(workspace)
+    from app.release import ReleaseManager
+    report=ReleaseManager().prepare(root, True)
+    if not report.ready:
+        raise RuntimeError("; ".join(report.blockers))
+    out=root/".app-builder"/"release_bundle.zip"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as bundle:
+        for relative in sorted(report.artifacts):
+            bundle.write(root/relative, relative)
+        bundle.writestr("release_report.json", json.dumps({
+            "ready": report.ready,
+            "checks": report.checks,
+            "blockers": report.blockers,
+            "artifacts": report.artifacts,
+        }, indent=2, ensure_ascii=False))
+    return out, report
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self,status,payload):
         body=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(body))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(body)
