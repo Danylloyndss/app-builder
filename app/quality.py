@@ -134,6 +134,27 @@ class QualityGate:
                 else:
                     acceptance.append(criterion)
 
+        # Installable mobile builds must have a valid web manifest and reference it.
+        mobile_meta = workspace / "mobile.json"
+        if mobile_meta.exists():
+            try:
+                mobile = json.loads(mobile_meta.read_text(encoding="utf-8"))
+                manifest_name = str(mobile.get("manifest") or "manifest.webmanifest")
+                manifest = workspace / manifest_name
+                index_text = (workspace / "index.html").read_text(encoding="utf-8") if (workspace / "index.html").exists() else ""
+                manifest_data = json.loads(manifest.read_text(encoding="utf-8")) if manifest.exists() else {}
+                required_manifest = ("name", "short_name", "start_url", "display")
+                if not manifest.exists() or any(not manifest_data.get(key) for key in required_manifest):
+                    errors.append("Mobile capability has an invalid install manifest")
+                elif manifest_data.get("display") != "standalone":
+                    errors.append("Mobile install manifest must use standalone display mode")
+                elif f'href="{manifest_name}"' not in index_text:
+                    errors.append("Mobile install manifest is not linked from index.html")
+                else:
+                    structural.append("Installable mobile manifest passed validation")
+            except (OSError, ValueError, TypeError):
+                errors.append("Mobile capability manifest is invalid JSON")
+
         # Generic feature behavior must exist in executable UI code, not only metadata.
         if "timepro" not in mission:
             script = (workspace / "app.js").read_text(encoding="utf-8") if (workspace / "app.js").exists() else ""
