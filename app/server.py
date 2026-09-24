@@ -111,12 +111,19 @@ def _release_bundle(workspace=WORKSPACE):
     """Create and verify a deterministic zip bundle from a release workspace."""
     root=Path(workspace)
     from app.release import ReleaseManager
-    report=ReleaseManager().prepare(root, True)
+    production = False
+    state = root / "state.json"
+    if state.is_file():
+        try:
+            production = bool(json.loads(state.read_text(encoding="utf-8")).get("diagnostics", {}).get("production_release_requested", False))
+        except (OSError, ValueError):
+            production = False
+    report=ReleaseManager().prepare(root, True, production=production)
     if not report.ready:
         raise RuntimeError("; ".join(report.blockers))
     out=root/".app-builder"/"release_bundle.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
-    manifest={"ready":report.ready,"checks":report.checks,"blockers":report.blockers,"artifacts":report.artifacts}
+    manifest={"format_version":1,"production":production,"ready":report.ready,"checks":report.checks,"blockers":report.blockers,"artifacts":report.artifacts}
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as bundle:
         for relative in sorted(report.artifacts):
             info=zipfile.ZipInfo(relative, date_time=(1980,1,1,0,0,0))
