@@ -49,4 +49,17 @@ class ProjectValidator:
             except (OSError, ValueError):
                 errors.append("features.json is invalid JSON")
 
+        integrations_path = workspace / ".app-builder" / "integrations.json"
+        if integrations_path.exists():
+            try:
+                integrations = json.loads(integrations_path.read_text(encoding="utf-8"))
+                if not isinstance(integrations.get("integrations", {}), dict):
+                    errors.append("integrations.json must contain an integrations object")
+                else:
+                    for name, config in integrations["integrations"].items():
+                        if not isinstance(config, dict) or config.get("approval_required") is not True:
+                            errors.append(f"Integration {name} must require explicit approval")
+            except (OSError, ValueError, TypeError):
+                errors.append("integrations.json is invalid JSON")
+
         return not errors, errors
