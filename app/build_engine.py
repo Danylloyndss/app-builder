@@ -918,7 +918,7 @@ if __name__ == "__main__":
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111827">
-  <title>TimePro — Feuille d’heures</title>
+  <link rel="manifest" href="manifest.webmanifest">\n  <title>TimePro — Feuille d’heures</title>
   <style>
     :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f3f4f6}
     *{box-sizing:border-box}body{margin:0}main{max-width:980px;margin:auto;padding:20px;display:grid;gap:18px}
