@@ -419,6 +419,21 @@ class Manager:
             deployment_ready=deployment_ready,
         )
         release_report.save(artifact_root / "release_report.json")
+        # A successful mission now produces the actual verified delivery bundle,
+        # not merely a readiness report. Publishing remains approval-gated.
+        if release_report.ready and release_quality_ok:
+            try:
+                bundle, bundled_report = self.release.build_verified_bundle(
+                    self.workspace, release_quality_ok, production=production
+                )
+                self.memory.diagnostics["release_bundle_ready"] = True
+                self.memory.diagnostics["release_bundle"] = str(bundle.relative_to(self.workspace))
+                self.memory.diagnostics["release_bundle_sha256"] = hashlib.sha256(bundle.read_bytes()).hexdigest()
+                self.memory.record("release_bundle_created", path=str(bundle), artifact_count=len(bundled_report.artifacts))
+            except Exception as exc:
+                self.memory.diagnostics["release_bundle_ready"] = False
+                self.memory.diagnostics["release_bundle_error"] = str(exc)
+                self.memory.errors.append("Release bundle creation failed: " + str(exc))
         self.memory.diagnostics["release_ready"] = release_report.ready
         self.memory.diagnostics["release_blockers"] = list(release_report.blockers)
         self.memory.diagnostics["release_artifacts"] = len(release_report.artifacts)
