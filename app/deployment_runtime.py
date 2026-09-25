@@ -39,6 +39,8 @@ class DeploymentResult:
     external_action_required: bool
     health: HealthResult | None
     error: str | None = None
+    deployment_id: str | None = None
+    url: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -110,6 +112,8 @@ class DeploymentRuntime:
                 external_action_required=result.external_action_required,
                 health=None,
                 error=result.error,
+                deployment_id=result.deployment_id,
+                url=result.url,
             )
         return DeploymentResult(
             status="external_action_required",
