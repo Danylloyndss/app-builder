@@ -128,7 +128,16 @@ class DeploymentRuntime:
         if provider.lower() == "railway":
             from .railway_provider import RailwayProvider
             result = RailwayProvider(workspace).status(deployment_id)
-            return DeploymentResult(result.status, provider, None, result.external_action_required, None, result.error)
+            return DeploymentResult(
+                result.status,
+                provider,
+                None,
+                result.external_action_required,
+                None,
+                result.error,
+                result.deployment_id,
+                result.url,
+            )
         return DeploymentResult("external_action_required", provider, None, True, None, f"No status adapter for provider: {provider}")
 
     def save_result(self, workspace: str | Path, result: DeploymentResult) -> Path:
