@@ -15,11 +15,12 @@ class RailwayProviderTests(unittest.TestCase):
 
     def test_status_maps_success(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"RAILWAY_API_TOKEN": "test-token"}, clear=True):
-            completed = mock.Mock(returncode=0, stdout='{"status":"success","url":"https://example.test"}\n', stderr="")
+            completed = mock.Mock(returncode=0, stdout='[{"id":"dep-123","status":"SUCCESS","url":"https://example.test"}]\n', stderr="")
             with mock.patch("subprocess.run", return_value=completed):
                 result = RailwayProvider(tmp).status("dep-123")
         self.assertEqual(result.status, "published")
         self.assertEqual(result.url, "https://example.test")
+        run.assert_called_once_with(["railway", "deployment", "list", "--json", "--limit", "100"], cwd=tmp, capture_output=True, text=True, timeout=60, check=False)
 
     def test_authenticated_publish_queues_deployment(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"RAILWAY_API_TOKEN": "test-token"}, clear=True):
