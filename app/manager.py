@@ -17,6 +17,7 @@ from .quality import QualityGate
 from .release import ReleaseManager
 from .deployment import DeploymentAdapter
 from .release_state import ReleaseState
+from .delivery import DeliveryCoordinator
 from .specification import SpecificationBuilder
 from .tasks import BuildTask, TaskBuilder
 from .tester import Tester
@@ -446,6 +447,46 @@ class Manager:
             release_state.mark_ready(release_hash, reason="verified release bundle ready" if self.memory.diagnostics.get("release_bundle_sha256") else "verified build artifacts ready")
         else:
             release_state.set("not_ready")
+        # Production delivery is the next real autonomous boundary: after the
+        # verified bundle exists, pause only for the human release approval. On
+        # resume, the approved bundle is published through the configured provider.
+        if production and self.memory.diagnostics.get("release_bundle_ready"):
+            delivery = DeliveryCoordinator(self.workspace)
+            bundle_path = self.workspace / self.memory.diagnostics["release_bundle"]
+            bundle_hash = self.memory.diagnostics.get("release_bundle_sha256")
+            existing_approval = self.memory.diagnostics.get("production_release_approval_id")
+            approved = self.approvals.approved_for("Publish production release", existing_approval)
+            if not approved:
+                pending = next((x for x in self.approvals.list_pending() if x["action"] == "Publish production release"), None)
+                request = pending or self.approvals.create("Publish production release", "Approve publication of the verified release bundle to the production provider.")
+                request_id = request["id"] if isinstance(request, dict) else request.id
+                self.memory.diagnostics["production_release_approval_id"] = request_id
+                self.memory.diagnostics["production_release_approval_pending"] = True
+                self.memory.status = "waiting_for_approval"
+                self.memory.current_task = "Publish production release"
+                self.memory.record("production_release_approval_requested", request_id=request_id, release_hash=bundle_hash)
+                self.memory.save(self.memory_path)
+                return self.memory
+            self.memory.diagnostics["production_release_approval_pending"] = False
+            provider = str(self.memory.diagnostics.get("deployment_provider") or "railway")
+            deployment = delivery.publish(provider, bundle_path)
+            deployment_path = delivery.runtime.save_result(self.workspace, deployment)
+            self.memory.diagnostics["deployment_provider"] = provider
+            self.memory.diagnostics["deployment_status"] = deployment.status
+            self.memory.diagnostics["deployment_result"] = str(deployment_path.relative_to(self.workspace))
+            self.memory.diagnostics["deployment_id"] = getattr(deployment, "deployment_id", None)
+            self.memory.diagnostics["deployment_url"] = getattr(deployment, "url", None)
+            self.memory.record("production_release_published", provider=provider, status=deployment.status, release_hash=bundle_hash)
+            if deployment.external_action_required:
+                self.memory.status = "waiting_for_approval"
+                self.memory.current_task = "Complete provider authentication/action"
+                self.memory.save(self.memory_path)
+                return self.memory
+            if deployment.status == "failed":
+                self.memory.status = "completed_with_errors"
+                self.memory.errors.append(deployment.error or "Production deployment failed")
+                self.memory.save(self.memory_path)
+                return self.memory
         self.memory.diagnostics["release_state"] = release_state.read()["state"]
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
