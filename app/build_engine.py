@@ -724,6 +724,7 @@ if __name__ == "__main__":
                 if item not in current:
                     current.append(item)
             self._save_features(current)
+            self._generate_feature_artifacts(current, mission)
             return f"Implemented TimePro feature: {feature}"
         if "index.html" not in files or "app.js" not in files:
             self.create_structure(mission)
@@ -734,6 +735,7 @@ if __name__ == "__main__":
         self.project.write_file("index.html", self._html(title, mission, current))
         self.project.write_file("app.js", self._javascript(current))
         self.project.write_file("README.md", self._readme(mission, current))
+        self._generate_feature_artifacts(current, mission)
         self._save_features(current)
         return f"Implemented feature: {feature}"
 
