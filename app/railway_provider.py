@@ -68,7 +68,7 @@ class RailwayProvider:
     def status(self, deployment_id: str, timeout: int = 60) -> RailwayResult:
         if not self.authenticated():
             return RailwayResult("external_action_required", True, deployment_id=deployment_id, error="Railway authentication is required")
-        command = ["railway", "status", "--json"]
+        command = ["railway", "deployment", "list", "--json", "--limit", "100"]
         try:
             completed = subprocess.run(command, cwd=str(self.workspace), capture_output=True, text=True, timeout=timeout, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -76,16 +76,20 @@ class RailwayProvider:
         if completed.returncode != 0:
             return RailwayResult("failed", False, deployment_id=deployment_id, error=completed.stderr[-4000:] or completed.stdout[-4000:])
         payload = self._parse(completed.stdout)
-        state = str(payload.get("status") or payload.get("state") or "").lower()
-        mapping = {"success": "published", "successful": "published", "deployed": "published", "failed": "failed", "crashed": "failed", "building": "running", "deploying": "running", "queued": "queued"}
-        return RailwayResult(mapping.get(state, "running"), False, deployment_id=deployment_id, url=payload.get("url"))
+        deployments = payload if isinstance(payload, list) else payload.get("deployments", [])
+        match = next((item for item in deployments if str(item.get("id") or item.get("deploymentId")) == deployment_id), None)
+        if match is None:
+            return RailwayResult("failed", False, deployment_id=deployment_id, error="deployment was not found in Railway deployment list")
+        state = str(match.get("status") or match.get("state") or "").lower()
+        mapping = {"success": "published", "successful": "published", "active": "published", "completed": "published", "deployed": "published", "failed": "failed", "crashed": "failed", "removed": "failed", "removing": "failed", "building": "running", "deploying": "running", "initializing": "running", "waiting": "queued", "queued": "queued"}
+        return RailwayResult(mapping.get(state, "running"), False, deployment_id=deployment_id, url=match.get("url"))
     
     @staticmethod
-    def _parse(output: str) -> dict:
+    def _parse(output: str) -> dict | list:
         for line in reversed(output.splitlines()):
             try:
                 value = json.loads(line)
-                if isinstance(value, dict):
+                if isinstance(value, (dict, list)):
                     return value
             except ValueError:
                 continue
