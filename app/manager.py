@@ -303,6 +303,37 @@ class Manager:
             self.memory = ProjectMemory(mission=mission, status="planning"); tasks = self._prepare_project(mission); self.memory.plan = [task.title for task in tasks]; self.memory.record("plan_created", tasks=self.memory.plan, execution="dependency_graph"); self.memory.task_statuses = {task.id:"pending" for task in tasks}; self.memory.save(self.memory_path)
         else:
             tasks = self._load_tasks(); self.memory.record("mission_resumed", current_task=self.memory.current_task)
+            # Resume an in-flight production deployment directly instead of
+            # rebuilding/redeploying the project.
+            if self.memory.status == "waiting_for_deployment":
+                provider = str(self.memory.diagnostics.get("deployment_provider") or "railway")
+                release_hash = self.memory.diagnostics.get("release_bundle_sha256")
+                deployment_id = self.memory.diagnostics.get("deployment_id")
+                if release_hash and deployment_id:
+                    delivery = DeliveryCoordinator(self.workspace)
+                    reconciled = delivery.reconcile(
+                        provider,
+                        release_hash,
+                        deployment_id,
+                        self.memory.diagnostics.get("deployment_url"),
+                    )
+                    self.memory.diagnostics["deployment_reconciliation"] = reconciled
+                    if reconciled.get("status") == "published":
+                        self.memory.status = "completed"
+                        self.memory.current_task = ""
+                        self.memory.diagnostics["release_state"] = "published"
+                        self.memory.record("production_deployment_confirmed", provider=provider, deployment_id=deployment_id)
+                        self.memory.save(self.memory_path)
+                        return self.memory
+                    if reconciled.get("status") == "failed":
+                        self.memory.status = "completed_with_errors"
+                        self.memory.errors.append(reconciled.get("error") or "Production deployment failed")
+                        self.memory.save(self.memory_path)
+                        return self.memory
+                    self.memory.status = "waiting_for_deployment"
+                    self.memory.current_task = "Waiting for production deployment"
+                    self.memory.save(self.memory_path)
+                    return self.memory
             self._validate_build_integrity(tasks)
             for task in tasks:
                 if self.memory.task_statuses.get(task.id) != "waiting_for_approval":
