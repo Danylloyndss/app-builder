@@ -117,6 +117,41 @@ class ReleaseManager:
             checks.extend(["production Dockerfile present", "production deployment manifest present", "production readiness checks passed"])
         return ReleaseReport(True, checks, [], artifacts)
 
+    def build_verified_bundle(self, workspace: str | Path, quality_passed: bool, production: bool = False) -> tuple[Path, ReleaseReport]:
+        """Create a deterministic, hash-verified release bundle after quality passes.
+
+        This is intentionally provider-neutral: creating the bundle is autonomous;
+        publishing it remains a separate approval-gated action.
+        """
+        root = Path(workspace)
+        report = self.prepare(root, quality_passed, production=production)
+        if not report.ready:
+            raise RuntimeError("; ".join(report.blockers))
+
+        output = root / ".app-builder" / "release_bundle.zip"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "format_version": 1,
+            "production": bool(production),
+            "ready": report.ready,
+            "checks": report.checks,
+            "blockers": report.blockers,
+            "artifacts": report.artifacts,
+        }
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+            for relative in sorted(report.artifacts):
+                info = zipfile.ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                archive.writestr(info, (root / relative).read_bytes())
+            info = zipfile.ZipInfo("release_report.json", date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
+
+        verification = self.verify_bundle(output, report)
+        if not verification.get("ok"):
+            raise RuntimeError(verification.get("error", "release bundle verification failed"))
+        return output, report
+
     def verify_bundle(self, bundle: str | Path, report: ReleaseReport | None = None) -> dict:
         """Verify ZIP safety and every artifact hash before delivery."""
         path = Path(bundle)
