@@ -39,6 +39,21 @@ class ReleaseManagerTests(unittest.TestCase):
 
 
 
+    def test_build_verified_bundle_creates_and_verifies_deterministic_bundle(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._base(root)
+            manager = ReleaseManager()
+            bundle, report = manager.build_verified_bundle(root, True)
+            self.assertTrue(report.ready)
+            self.assertTrue(bundle.is_file())
+            verification = manager.verify_bundle(bundle, report)
+            self.assertTrue(verification["ok"])
+            self.assertEqual(verification["artifact_count"], len(report.artifacts))
+            first = bundle.read_bytes()
+            bundle2, _ = manager.build_verified_bundle(root, True)
+            self.assertEqual(first, bundle2.read_bytes())
+
     def test_verify_bundle_detects_hash_tampering(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
