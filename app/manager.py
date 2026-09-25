@@ -487,6 +487,32 @@ class Manager:
                 self.memory.errors.append(deployment.error or "Production deployment failed")
                 self.memory.save(self.memory_path)
                 return self.memory
+            # A provider may return queued/running first. Reconcile immediately
+            # when it gives us a deployment id, so the agent never falsely marks
+            # a release as completed before the provider confirms its state.
+            if deployment.deployment_id:
+                reconciled = delivery.reconcile(
+                    provider,
+                    bundle_hash,
+                    deployment.deployment_id,
+                    deployment.url,
+                )
+                self.memory.diagnostics["deployment_reconciliation"] = reconciled
+                reconciled_status = reconciled.get("status")
+                if reconciled_status == "published":
+                    self.memory.status = "completed"
+                    self.memory.current_task = ""
+                elif reconciled_status == "failed":
+                    self.memory.status = "completed_with_errors"
+                    self.memory.errors.append(
+                        reconciled.get("error") or "Production deployment failed during reconciliation"
+                    )
+                else:
+                    self.memory.status = "waiting_for_deployment"
+                    self.memory.current_task = "Waiting for production deployment"
+                self.memory.save(self.memory_path)
+                if self.memory.status != "completed":
+                    return self.memory
         self.memory.diagnostics["release_state"] = release_state.read()["state"]
         self.memory.diagnostics["build_report"] = ".app-builder/build_report.json"
         self.memory.diagnostics["artifact_count"] = len(artifacts)
